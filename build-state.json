@@ -1,0 +1,159 @@
+{
+  "$schema": "./build-state.schema.md",
+  "project": "Shifa International School — Website & Admin Panel",
+  "authority": "This file is the ONLY place task status lives. BUILD-TRACKER.md defines tasks; it never records status.",
+  "updated_at": "2026-08-14",
+  "updated_by": "architecture-handoff",
+
+  "read_order_for_ai": [
+    "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
+    "2. Check blocked_on. If non-empty, STOP and report to the user.",
+    "3. Find the first task in `tasks` with status 'todo' whose every `needs` id has status 'done'. That is the ONLY task for this session.",
+    "4. Open BUILD-TRACKER.md and read ONLY that task's card (search for its id).",
+    "5. Open ARCHITECTURE.md and read ONLY the sections listed in the card's `Load` line. Nothing else.",
+    "6. Build exactly the card's Do list. Touch only the card's Files.",
+    "7. Run the card's Verify commands. All must pass.",
+    "8. Update this file: set that task to 'done', append a session_log entry, bump updated_at.",
+    "9. STOP. Do not begin the next task, even if it looks trivial."
+  ],
+
+  "global_rules": [
+    "ONE task per session. Never chain tasks.",
+    "Never edit a 'done' task's output. If it is wrong, add a new task with a new id and set the old one's status to 'superseded'.",
+    "Never invent facts about the school. See ARCHITECTURE.md A-3.1. Use the literal marker [[CONTENT REQUIRED — DO NOT PUBLISH]].",
+    "If a task cannot be completed as written, set status 'blocked', fill blocked_reason, add to blocked_on, and STOP.",
+    "If the work would need files outside the card's Files list, STOP and report scope drift instead of expanding.",
+    "Every completed task = one commit, message 'T-0XX: <title>'.",
+    "PRD.md sections 5, 6.3, 6.4, 10.1 and 10.2 are SUPERSEDED. Never build from them."
+  ],
+
+  "phase_gates": {
+    "M8_before_launch": "No task in M9 or M10 may start until every M8 task is done.",
+    "content_gate": "T-130 requires the ARCHITECTURE.md A-3.1 checklist signed off by the school. Placeholders must not reach production.",
+    "human_gates": "T-131 subtasks are human-only. An AI marks them 'awaiting_human', never 'done'."
+  },
+
+  "blocked_on": [],
+
+  "open_decisions_required_before": {
+    "ADR-005_url_change": { "affects": ["T-030", "T-080"], "status": "decided_in_architecture", "note": "Locale-prefixed URLs. Reverse only by a new ADR." },
+    "ADR-007_admin_language": { "affects": ["T-030", "T-050"], "status": "assumed_bilingual", "note": "Confirm with school office staff. If English-only is confirmed, mark T-030 admin namespace optional." },
+    "content_owners": { "affects": ["T-130"], "status": "unassigned", "note": "ARCHITECTURE.md A-3.1 has 24 rows with no named owner yet." }
+  },
+
+  "progress": { "done": 0, "total": 78 },
+
+  "milestones": [
+    { "id": "M0", "title": "Foundation",            "tasks": "T-001..T-005", "done": false },
+    { "id": "M1", "title": "Database",              "tasks": "T-010..T-024", "done": false },
+    { "id": "M2", "title": "Policy & core services","tasks": "T-030..T-038", "done": false },
+    { "id": "M3", "title": "Authentication",        "tasks": "T-040..T-043", "done": false },
+    { "id": "M4", "title": "Admin shell",           "tasks": "T-050..T-052", "done": false },
+    { "id": "M5", "title": "Admin modules",         "tasks": "T-060..T-071", "done": false },
+    { "id": "M6", "title": "Public site",           "tasks": "T-080..T-090", "done": false },
+    { "id": "M7", "title": "SEO, perf, a11y",       "tasks": "T-100..T-104", "done": false },
+    { "id": "M8", "title": "Verification",          "tasks": "T-110..T-114", "done": false },
+    { "id": "M9", "title": "Operations",            "tasks": "T-120..T-124", "done": false },
+    { "id": "M10","title": "Launch",                "tasks": "T-130..T-132", "done": false }
+  ],
+
+  "tasks": [
+    { "id": "T-001", "m": "M0", "title": "Repo, Next.js, TypeScript, Tailwind", "needs": [], "status": "todo" },
+    { "id": "T-002", "m": "M0", "title": "Design tokens & typography (incl. Bangla fonts)", "needs": ["T-001"], "status": "todo" },
+    { "id": "T-003", "m": "M0", "title": "Env config & secret handling", "needs": ["T-001"], "status": "todo" },
+    { "id": "T-004", "m": "M0", "title": "PostgreSQL + Prisma wiring", "needs": ["T-003"], "status": "todo" },
+    { "id": "T-005", "m": "M0", "title": "CI skeleton (lint, typecheck, test, secret scan)", "needs": ["T-001"], "status": "todo" },
+
+    { "id": "T-010", "m": "M1", "title": "Migration: reference & lookup tables", "needs": ["T-004"], "status": "todo" },
+    { "id": "T-011", "m": "M1", "title": "Migration: identity, sessions, authorization", "needs": ["T-010"], "status": "todo" },
+    { "id": "T-012", "m": "M1", "title": "Migration: media assets", "needs": ["T-011"], "status": "todo" },
+    { "id": "T-013", "m": "M1", "title": "Migration: site config & SEO", "needs": ["T-012"], "status": "todo" },
+    { "id": "T-014", "m": "M1", "title": "Migration: academics", "needs": ["T-013"], "status": "todo" },
+    { "id": "T-015", "m": "M1", "title": "Migration: faculty", "needs": ["T-014"], "status": "todo" },
+    { "id": "T-016", "m": "M1", "title": "Migration: admission & fees", "needs": ["T-014"], "status": "todo" },
+    { "id": "T-017", "m": "M1", "title": "Migration: home & about content", "needs": ["T-013"], "status": "todo" },
+    { "id": "T-018", "m": "M1", "title": "Migration: notices", "needs": ["T-013"], "status": "todo" },
+    { "id": "T-019", "m": "M1", "title": "Migration: gallery", "needs": ["T-013"], "status": "todo" },
+    { "id": "T-020", "m": "M1", "title": "Migration: contact messages", "needs": ["T-010"], "status": "todo" },
+    { "id": "T-021", "m": "M1", "title": "Migration: audit log (append-only)", "needs": ["T-011"], "status": "todo" },
+    { "id": "T-022", "m": "M1", "title": "Migration: indexes & partial indexes", "needs": ["T-015","T-016","T-017","T-018","T-019","T-020","T-021"], "status": "todo" },
+    { "id": "T-023", "m": "M1", "title": "Prisma schema mapping over the SQL", "needs": ["T-022"], "status": "todo" },
+    { "id": "T-024", "m": "M1", "title": "Idempotent seed script", "needs": ["T-023"], "status": "todo" },
+
+    { "id": "T-030", "m": "M2", "title": "i18n runtime: locales, fallback, JSON namespaces", "needs": ["T-023"], "status": "todo" },
+    { "id": "T-031", "m": "M2", "title": "Permission engine (server-side authorization)", "needs": ["T-023"], "status": "todo" },
+    { "id": "T-032", "m": "M2", "title": "Session service (issue, verify, revoke)", "needs": ["T-023"], "status": "todo" },
+    { "id": "T-033", "m": "M2", "title": "Durable rate limiting", "needs": ["T-023"], "status": "todo" },
+    { "id": "T-034", "m": "M2", "title": "Validation schemas & HTML sanitization", "needs": ["T-023"], "status": "todo" },
+    { "id": "T-035", "m": "M2", "title": "Audit writer (transactional)", "needs": ["T-031"], "status": "todo" },
+    { "id": "T-036", "m": "M2", "title": "Cache tag registry & revalidation", "needs": ["T-023"], "status": "todo" },
+    { "id": "T-037", "m": "M2", "title": "Media upload pipeline", "needs": ["T-034"], "status": "todo" },
+    { "id": "T-038", "m": "M2", "title": "Write-pipeline helper (the 6 mandatory stages)", "needs": ["T-031","T-034","T-035","T-036"], "status": "todo" },
+
+    { "id": "T-040", "m": "M3", "title": "Login page & credential flow", "needs": ["T-032","T-033","T-030"], "status": "todo" },
+    { "id": "T-041", "m": "M3", "title": "Route middleware & admin guard", "needs": ["T-032"], "status": "todo" },
+    { "id": "T-042", "m": "M3", "title": "Password reset by email", "needs": ["T-040"], "status": "todo" },
+    { "id": "T-043", "m": "M3", "title": "Forced first-login password change", "needs": ["T-040"], "status": "todo" },
+
+    { "id": "T-050", "m": "M4", "title": "Admin layout & permission-filtered sidebar", "needs": ["T-041","T-031","T-030"], "status": "todo" },
+    { "id": "T-051", "m": "M4", "title": "Shared admin UI kit (DataTable, DualLocaleField, PermissionGate)", "needs": ["T-050"], "status": "todo" },
+    { "id": "T-052", "m": "M4", "title": "Admin dashboard", "needs": ["T-051"], "status": "todo" },
+
+    { "id": "T-060", "m": "M5", "title": "Admin: Site Settings + protected branding", "needs": ["T-051","T-038"], "status": "todo" },
+    { "id": "T-061", "m": "M5", "title": "Admin: Home content", "needs": ["T-051","T-038","T-037"], "status": "todo" },
+    { "id": "T-062", "m": "M5", "title": "Admin: About content", "needs": ["T-051","T-038","T-037"], "status": "todo" },
+    { "id": "T-063", "m": "M5", "title": "Admin: Academics", "needs": ["T-051","T-038","T-037"], "status": "todo" },
+    { "id": "T-064", "m": "M5", "title": "Admin: Admission & fees", "needs": ["T-051","T-038","T-037"], "status": "todo" },
+    { "id": "T-065", "m": "M5", "title": "Admin: Faculty (+consent gates)", "needs": ["T-051","T-038","T-037"], "status": "todo" },
+    { "id": "T-066", "m": "M5", "title": "Admin: Notices (+publish action)", "needs": ["T-051","T-038","T-037"], "status": "todo" },
+    { "id": "T-067", "m": "M5", "title": "Admin: Gallery (albums, photos, videos)", "needs": ["T-051","T-038","T-037"], "status": "todo" },
+    { "id": "T-068", "m": "M5", "title": "Admin: Contact messages inbox", "needs": ["T-051","T-038"], "status": "todo" },
+    { "id": "T-069", "m": "M5", "title": "Admin: Manage Admins & permission matrix", "needs": ["T-051","T-038"], "status": "todo" },
+    { "id": "T-070", "m": "M5", "title": "Admin: My Profile", "needs": ["T-051","T-038"], "status": "todo" },
+    { "id": "T-071", "m": "M5", "title": "Admin: Media library", "needs": ["T-051","T-037"], "status": "todo" },
+
+    { "id": "T-080", "m": "M6", "title": "Public layout, header, footer, language switcher", "needs": ["T-030","T-036"], "status": "todo" },
+    { "id": "T-081", "m": "M6", "title": "Public: Home", "needs": ["T-080"], "status": "todo" },
+    { "id": "T-082", "m": "M6", "title": "Public: About", "needs": ["T-080"], "status": "todo" },
+    { "id": "T-083", "m": "M6", "title": "Public: Academics + routines/calendar/exams", "needs": ["T-080"], "status": "todo" },
+    { "id": "T-084", "m": "M6", "title": "Public: Admission", "needs": ["T-080"], "status": "todo" },
+    { "id": "T-085", "m": "M6", "title": "Public: Faculty", "needs": ["T-080"], "status": "todo" },
+    { "id": "T-086", "m": "M6", "title": "Public: Notices list + detail", "needs": ["T-080"], "status": "todo" },
+    { "id": "T-087", "m": "M6", "title": "Public: Gallery", "needs": ["T-080"], "status": "todo" },
+    { "id": "T-088", "m": "M6", "title": "Public: Contact + inquiry form", "needs": ["T-080","T-033"], "status": "todo" },
+    { "id": "T-089", "m": "M6", "title": "Public: Privacy policy, terms, cookie notice", "needs": ["T-080"], "status": "todo" },
+    { "id": "T-090", "m": "M6", "title": "Public: 404, error, empty & maintenance states", "needs": ["T-080"], "status": "todo" },
+
+    { "id": "T-100", "m": "M7", "title": "SEO: metadata, hreflang, sitemap, robots, JSON-LD", "needs": ["T-081","T-082","T-083","T-084","T-085","T-086","T-087","T-088"], "status": "todo" },
+    { "id": "T-101", "m": "M7", "title": "Responsive image delivery", "needs": ["T-087"], "status": "todo" },
+    { "id": "T-102", "m": "M7", "title": "Font subsetting & loading strategy", "needs": ["T-002","T-080"], "status": "todo" },
+    { "id": "T-103", "m": "M7", "title": "ISR wiring & on-demand revalidation", "needs": ["T-036","T-100"], "status": "todo" },
+    { "id": "T-104", "m": "M7", "title": "Accessibility remediation pass (both locales)", "needs": ["T-100"], "status": "todo" },
+
+    { "id": "T-110", "m": "M8", "title": "Authorization matrix test suite (~40 cases)", "needs": ["T-069"], "status": "todo" },
+    { "id": "T-111", "m": "M8", "title": "Repository & constraint integration tests", "needs": ["T-024"], "status": "todo" },
+    { "id": "T-112", "m": "M8", "title": "E2E golden paths (both locales, mobile)", "needs": ["T-088","T-066"], "status": "todo" },
+    { "id": "T-113", "m": "M8", "title": "Content & ethics gates (placeholder, consent, stats, i18n parity, leakage)", "needs": ["T-065","T-030"], "status": "todo" },
+    { "id": "T-114", "m": "M8", "title": "CI performance, bundle & a11y budgets", "needs": ["T-103","T-104"], "status": "todo" },
+
+    { "id": "T-120", "m": "M9", "title": "Nightly encrypted backup job", "needs": ["T-114"], "status": "todo" },
+    { "id": "T-121", "m": "M9", "title": "Retention purge job (messages 12mo, audit 24mo)", "needs": ["T-114"], "status": "todo" },
+    { "id": "T-122", "m": "M9", "title": "Uptime, error tracking, auth anomaly alerts", "needs": ["T-114"], "status": "todo" },
+    { "id": "T-123", "m": "M9", "title": "Staging & production environments, migration pipeline", "needs": ["T-114"], "status": "todo" },
+    { "id": "T-124", "m": "M9", "title": "Weekly content-freshness report", "needs": ["T-122"], "status": "todo" },
+
+    { "id": "T-130", "m": "M10", "title": "Content load from A-3.1 checklist", "needs": ["T-123"], "status": "todo" },
+    { "id": "T-131", "m": "M10", "title": "Human gates (security, a11y, restore rehearsal, staff walkthrough)", "needs": ["T-130"], "status": "todo" },
+    { "id": "T-132", "m": "M10", "title": "Go-live: domain, DNS, seed, rotate credentials, handover", "needs": ["T-131"], "status": "todo" }
+  ],
+
+  "session_log": [
+    {
+      "at": "2026-08-14",
+      "task": "—",
+      "by": "architecture-handoff",
+      "result": "Tracker initialised. 78 tasks defined. No build work started.",
+      "next": "T-001"
+    }
+  ]
+}

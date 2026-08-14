@@ -11,7 +11,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-14",
-  "updated_by": "architecture-handoff",
+  "updated_by": "doc-audit-repair",
 
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
@@ -174,7 +174,21 @@
       "at": "2026-08-14",
       "task": "—",
       "by": "architecture-handoff",
-      "result": "Tracker initialised. 78 tasks defined. No build work started.",
+      "result": "Tracker initialised. 77 tasks defined. No build work started.",
+      "next": "T-001"
+    },
+    {
+      "at": "2026-08-14",
+      "task": "—",
+      "by": "doc-audit-repair",
+      "result": "Documentation audit, repair round 1. No build work. Fixed the placeholder marker literal, the T-001..T-132 dependency graph (removed a deadlock, made build-state.json the single source), status_values, phase_gates, read_order_for_ai, the progress.total count, the route table, the module-boundary and dangling references, the site_branding permission collapse, design-system contrast figures and ADR statuses. Retired PRD.md and AUDIT.md into the surviving documents, wrote README.md, normalised all seven files to LF.",
+      "next": "T-001"
+    },
+    {
+      "at": "2026-08-14",
+      "task": "—",
+      "by": "doc-audit-repair",
+      "result": "Documentation audit, repair round 2. No build work. Rebuilt ARCHITECTURE.md §A-5.2 against Part B: removed faculty_private from the faculty module (personal data is Super Admin only), corrected five non-existent table names, added the missing academics/faculty/media/users tables, gave site_settings the §B-3 lookup tables (ADR-002) and pages/page_translations (T-100), and added the ownership-convention note — all 108 Phase 1 tables now accounted for. Corrected PRODUCT-SPEC.md §P-7.8 to assign employee_code only and create no credential before Phase 2 (ADR-004, T-065), and fixed every §P-6 identifier that did not exist in Part B. Stale 78-task counts, design-system §7 iconography contrast, and three wording defects.",
       "next": "T-001"
     }
   ]

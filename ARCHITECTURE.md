@@ -13,7 +13,7 @@
 >
 > | File | Role |
 > |---|---|
-> | **[`build-state.json`](build-state.json)** | **Start here, every session.** ~10KB. Holds the status of all 78 tasks, the resume protocol, and the global stop rules. It is the only place status lives. |
+> | **[`build-state.json`](build-state.json)** | **Start here, every session.** ~10KB. Holds the status of all 77 tasks, the resume protocol, and the global stop rules. It is the only place status lives. |
 > | **[`BUILD-TRACKER.md`](BUILD-TRACKER.md)** | The task catalogue. One card per task: what to load from this file, where to start, what to touch, **where to stop**, and how to verify. |
 > | **This file** | Read only the sections a task card's `Load` line names — system architecture and database design. |
 > | **[`PRODUCT-SPEC.md`](PRODUCT-SPEC.md)** | Page-by-page UI specs, admin screen specs, API reference, tech stack, and reference data — read when a task card's `Load` line points here. |

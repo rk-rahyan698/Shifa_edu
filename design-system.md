@@ -162,7 +162,9 @@ Script-based fallback in a single stack, because Bangla/Latin mixed strings are 
 
 ## 7. Iconography
 
-- Simple, thin-line icons (1.5–2px stroke), Forest Green or Charcoal by default, Gold or Teal only for hover/active states.
+- Simple, thin-line icons (1.5–2px stroke), Deep Forest Green `#1E4B3A` or Charcoal Ink `#22262A` by default.
+- **Hover/active: Forest Green — Hover/Light `#2E6B52`, which measures 6.29:1 on white.** Uniform Teal `#3A7A72` (4.99:1 on white) is the permitted alternative.
+- **Gold `#B8912F` is not an icon colour on light backgrounds at any state**, hover and active included — a state change is meaning-bearing, and gold is 2.95:1 on white, below the 3:1 non-text floor (§2.4, §9). Gold stays decorative: underlines, rules, borders, background fills.
 - Avoid filled, cartoon-style, or multi-color icon sets — keep icons monochrome per instance for a formal look.
 
 ---

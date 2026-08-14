@@ -1,0 +1,45 @@
+# Dependency updates (T-005).
+#
+# This is the standing mechanism behind the audit step in ci.yml: advisories that
+# cannot be fixed at the application layer — currently postcss and sharp, both
+# transitive through next — are resolved by upgrading the parent package, and
+# Dependabot is what proposes that upgrade as a reviewable PR rather than a
+# forced `npm audit fix`.
+#
+# Every PR it opens runs the full CI pipeline; nothing here merges on its own.
+
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '04:00'
+      timezone: Asia/Dhaka
+    open-pull-requests-limit: 5
+    versioning-strategy: increase
+    labels:
+      - dependencies
+    groups:
+      # One PR for the routine patch and minor noise, so review attention goes to
+      # the majors instead. Majors stay separate: React, Next and Prisma upgrades
+      # each need their own reading and their own test run.
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # The workflow files pin actions by major tag; this keeps those tags current,
+  # including the security fixes to the actions themselves.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '04:00'
+      timezone: Asia/Dhaka
+    labels:
+      - dependencies
+      - github-actions

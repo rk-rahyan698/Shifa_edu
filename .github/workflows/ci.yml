@@ -1,0 +1,113 @@
+# Shifa International School — CI skeleton (T-005)
+#
+# This is the first slice of the pipeline in ARCHITECTURE.md §A-14.2:
+#
+#   PR -> lint · typecheck · unit · integration · AUTHORIZATION MATRIX · e2e
+#      -> a11y · lighthouse budgets · bundle budget · i18n parity · secret scan
+#      -> preview deploy
+#
+# T-005 builds only: install -> lint -> typecheck -> build -> unit -> secret scan,
+# plus a dependency audit. The remaining stages arrive with the tasks that own
+# them — integration and constraints (T-111), authorization matrix (T-110), E2E
+# (T-112), content and i18n-parity gates (T-113), and the performance, bundle
+# and a11y budgets (T-114). Deployment pipelines are T-123.
+#
+# Contract: every later task adds its tests to this pipeline. It is never bypassed.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: nothing here writes to the repository.
+permissions:
+  contents: read
+
+# A new push to the same ref makes an in-flight run obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Lint, typecheck, build, test
+    runs-on: ubuntu-latest
+
+    env:
+      # Prisma resolves env("DATABASE_URL") when it generates the client, so the
+      # variable must exist even though nothing in this job opens a connection.
+      # A placeholder is correct here and is deliberately not a secret: no server
+      # is started, and the database-backed tests belong to T-111.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/shifa_ci?schema=public
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Matches the version used for local development; keep the two in step.
+          node-version: '24'
+          cache: npm
+
+      # `npm ci` installs strictly from the committed lockfile and fails if
+      # package.json and package-lock.json have drifted.
+      - name: Install dependencies
+        run: npm ci
+
+      # The Prisma client is generated output, not committed source. Typecheck
+      # and build both import it through src/lib/prisma.ts, so it must exist
+      # before either runs.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # The suite is empty until the first spec lands; `--passWithNoTests` in the
+      # script keeps that honest rather than silently green.
+      - name: Unit tests
+        run: npm test
+
+      # Blocking at `critical`. Three high-severity advisories are currently
+      # known and cannot be fixed at this layer: postcss and sharp are both
+      # transitive through next 15.5.23, and npm's only remedy is next@16 — a
+      # breaking major that would revise T-001, which the global rules forbid.
+      # They are surfaced as warnings so they stay visible, and Dependabot is
+      # the mechanism that will raise that upgrade as its own reviewable PR.
+      - name: Audit dependencies
+        run: |
+          npm audit --audit-level=high || echo "::warning::npm audit reports high-severity advisories — see the log above"
+          npm audit --audit-level=critical
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history: a secret that was committed and later removed is still
+          # a leaked secret, and a shallow clone would not see it.
+          fetch-depth: 0
+
+      # Enforces ARCHITECTURE.md §A-12 — "no credential literal in any repo
+      # file" — and backs T-003's rule that only .env.example is ever committed.
+      #
+      # gitleaks-action is free for personal accounts and public repositories.
+      # If this repository is moved under an organisation the action requires a
+      # GITLEAKS_LICENSE repository secret, and this step fails without one.
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

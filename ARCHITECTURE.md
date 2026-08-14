@@ -134,7 +134,7 @@ The 4 E's, expressed as measurable targets. Anything unmeasurable here is a requ
 | Attribute | Target | Gate |
 |---|---|---|
 | No unverified published claims | Every `site_stats` row has `verified_on`; unverified rows do not render | DB constraint + render guard |
-| No fabricated content | Placeholder markers (`[[CONTENT REQUIRED]]`) block publish | Publish-gate test |
+| No fabricated content | Placeholder markers (`[[CONTENT REQUIRED — DO NOT PUBLISH]]`) block publish | Publish-gate test |
 | Consent recorded | Faculty public profile renders only with `publish_consent_at` and (for photo) `photo_consent_at` | Render guard + test |
 | Data minimisation | Contact messages purged at 12 months; audit logs at 24 months | Scheduled job + test |
 | Language equity | Admin panel fully available in Bangla | i18n parity test covers admin namespace |
@@ -215,7 +215,7 @@ Nothing below can be generated. Until each row has a real value from the school,
 | 23 | Domain registrar login, DNS control confirmation | Owner | Deployment |
 | 24 | Named account owners: hosting, database, storage, email | Owner | Handover / bus factor |
 
-> **Publish gate.** A page section whose backing content is empty or still carries a `[[CONTENT REQUIRED]]` marker does not render on the public site and cannot be moved to `published`. The site launches smaller and honest rather than complete and fictional.
+> **Publish gate.** A page section whose backing content is empty or still carries a `[[CONTENT REQUIRED — DO NOT PUBLISH]]` marker does not render on the public site and cannot be moved to `published`. The site launches smaller and honest rather than complete and fictional.
 
 ---
 
@@ -710,7 +710,7 @@ For **every** mutating endpoint, automated assertions:
 
 | Gate | Fails when |
 |---|---|
-| Placeholder guard | Any `[[CONTENT REQUIRED]]` marker reaches `status = 'published'` |
+| Placeholder guard | Any string matching `\[\[CONTENT REQUIRED` reaches `status = 'published'` — prefix match, so marker variants cannot slip past |
 | Statistic honesty | A `site_stats` row without `verified_on` renders publicly |
 | Consent guard | A faculty profile renders without `publish_consent_at` (or a photo without `photo_consent_at`) |
 | i18n parity | A key exists in `bn.json` but not `en.json` (or vice versa) in any namespace, **including admin** |
@@ -724,6 +724,8 @@ A module is done when: acceptance criteria written as Given/When/Then are green 
 ### A-13.5 Pre-launch human gates
 
 Not automatable, and not skippable: security review sign-off · manual accessibility pass with a screen reader in **both** languages · **restore rehearsal from a real backup** · content verification (every published fact traced to a source and date) · staff walkthrough — an office member publishes a notice unaided, in Bangla · privacy policy live · super-admin password rotated and account owners recorded.
+
+Each gate above corresponds to a subtask of T-131. An AI sets T-131 to `awaiting_human`; only a human sets it to `done`, and doing so is what unblocks T-132.
 
 ---
 
@@ -2308,7 +2310,7 @@ The SQL above is authoritative. Prisma is a client over it, mapped with `@@map` 
 - ❌ Any principal's message, history, vision, or mission text.
 - ❌ Any admission banner asserting an open cycle.
 
-Where a section needs a value to be structurally valid, use `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, which the publish gate rejects.
+Where a section needs a value to be structurally valid, use `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, which the publish gate rejects. The canonical literal is `[[CONTENT REQUIRED — DO NOT PUBLISH]]`. The publish gate matches on the prefix `[[CONTENT REQUIRED` (§A-13.3), so any variant is also caught, but only the canonical form may be written.
 
 ---
 

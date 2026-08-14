@@ -38,7 +38,7 @@ ARCHITECTURE.md  ──▶ read ONLY the sections in the card's **Load** line
 | **Load** | The *only* architecture sections to open. If a card says `§B-6`, do not read `§B-5` or `§B-7`. |
 | **Start** | The precondition — what must already be true |
 | **Do** | The work. Nothing outside this list. |
-| **Files** | The only paths this task may create or modify |
+| **Files** | The only paths this task may create or modify. A path may appear in several cards — later cards extend it additively and must not rewrite earlier cards' content in it. |
 | **Contract** | What later tasks are allowed to depend on. Do not change a published contract without a new task id. |
 | **Stop** | The explicit boundary — including what is deliberately *not* in scope |
 | **Verify** | Must pass before the task may be marked `done` |
@@ -46,7 +46,7 @@ ARCHITECTURE.md  ──▶ read ONLY the sections in the card's **Load** line
 ### Non-negotiables
 
 1. **One task per session.** Never chain, even if the next looks trivial. Chaining is how scope drift and unreviewable diffs happen.
-2. **Never edit a `done` task's output.** Add a new task id; mark the old one `superseded`.
+2. **Never revise a `done` task's work.** If a done task's output is wrong, add a new task with a new id and set the old one's status to `superseded`. Additively extending a shared file (adding a script to `package.json`, adding a job to `ci.yml`, appending a section to `docs/RUNBOOK.md`) is **not** a revision and is allowed when that path appears in the current card's **Files** list.
 3. **Never originate a fact about the school.** See `ARCHITECTURE.md` §A-3.1. Use `[[CONTENT REQUIRED — DO NOT PUBLISH]]`.
 4. **Scope drift = stop.** If the work needs a file outside **Files**, stop and report rather than expanding.
 5. **`PRODUCT-SPEC.md` assumes every decision in `ARCHITECTURE.md` Parts A/B.** If a task card's `Load` line names both, `ARCHITECTURE.md` wins on anything they disagree about.
@@ -834,7 +834,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 **Do** Automated gates: placeholder guard, statistic-verification guard, faculty consent guard, i18n key parity **including the admin namespace**, private-data leakage (static import analysis), retention-job correctness.
 **Files** `tests/gates/**`, `scripts/check-i18n-parity.ts`
 **Contract** These are ethics controls, not style checks. They block CI.
-**Stop** Gates only. **Verify** Each gate fails on a deliberately seeded violation and passes once removed.
+**Stop** Gates only. **Verify** Each gate fails on a deliberately seeded violation and passes once removed. The placeholder gate is tested with **both** the canonical marker `[[CONTENT REQUIRED — DO NOT PUBLISH]]` and a deliberately malformed variant (the marker truncated before its `— DO NOT PUBLISH` suffix) — the §A-13.3 prefix match must reject both.
 
 ---
 
@@ -903,7 +903,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 **Do** Load every real item from the A-3.1 checklist through the admin panel. Verify every published statistic has a `verified_on` date and a source.
 **Files** *(none — data entry, not code)*
 **Contract** **No fabricated content.** Any item still missing stays unpublished; the site launches smaller and honest. An AI may assist with data entry it is given, and may originate nothing.
-**Stop** Content only. **Verify** Zero `[[CONTENT REQUIRED]]` markers in published rows; T-113 gates pass against production data.
+**Stop** Content only. **Verify** Zero `[[CONTENT REQUIRED — DO NOT PUBLISH]]` markers in published rows; T-113 gates pass against production data.
 
 ---
 

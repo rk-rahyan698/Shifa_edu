@@ -1,14 +1,23 @@
 {
-  "$schema": "./build-state.schema.md",
   "project": "Shifa International School — Website & Admin Panel",
   "authority": "This file is the ONLY place task status lives. BUILD-TRACKER.md defines tasks; it never records status.",
+
+  "status_values": {
+    "todo": "Not started. Eligible for selection when every `needs` id is `done`.",
+    "in_progress": "Claimed by the current session. Only one task may hold this at a time.",
+    "done": "Completed and verified. Its Verify commands passed.",
+    "blocked": "Cannot be completed as written. `blocked_reason` is filled and the id is listed in `blocked_on`.",
+    "awaiting_human": "Work an AI may not complete. Only a human may move this to `done`. Treated as NOT satisfying a dependency.",
+    "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
+  },
   "updated_at": "2026-08-14",
   "updated_by": "architecture-handoff",
 
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
-    "3. Find the first task in `tasks` with status 'todo' whose every `needs` id has status 'done'. That is the ONLY task for this session.",
+    "2b. Check `phase_gates`. If a gate's condition is not met, no task it guards may be selected, even if its `needs` are all done.",
+    "3. Find the first task in `tasks` with status 'todo' whose every `needs` id has status 'done'. That is the ONLY task for this session. A need with status 'awaiting_human', 'blocked' or 'superseded' does NOT count as satisfied. If no task qualifies and at least one task is 'awaiting_human', STOP and report: 'Build is waiting on human sign-off for <ids>. A human must set these to done in build-state.json before work continues.'",
     "4. Open BUILD-TRACKER.md and read ONLY that task's card (search for its id).",
     "5. Open ARCHITECTURE.md and read ONLY the sections listed in the card's `Load` line. Nothing else.",
     "6. Build exactly the card's Do list. Touch only the card's Files.",
@@ -19,7 +28,7 @@
 
   "global_rules": [
     "ONE task per session. Never chain tasks.",
-    "Never edit a 'done' task's output. If it is wrong, add a new task with a new id and set the old one's status to 'superseded'.",
+    "Never revise a 'done' task's work. If a done task's output is wrong, add a new task with a new id and set the old one's status to 'superseded'. Additively extending a shared file (adding a script to package.json, adding a job to ci.yml, appending a section to docs/RUNBOOK.md) is NOT a revision and is allowed when that path appears in the current card's Files list.",
     "Never invent facts about the school. See ARCHITECTURE.md A-3.1. Use the literal marker [[CONTENT REQUIRED — DO NOT PUBLISH]].",
     "If a task cannot be completed as written, set status 'blocked', fill blocked_reason, add to blocked_on, and STOP.",
     "If the work would need files outside the card's Files list, STOP and report scope drift instead of expanding.",
@@ -28,9 +37,21 @@
   ],
 
   "phase_gates": {
-    "M8_before_launch": "No task in M9 or M10 may start until every M8 task is done.",
-    "content_gate": "T-130 requires the ARCHITECTURE.md A-3.1 checklist signed off by the school. Placeholders must not reach production.",
-    "human_gates": "T-131 subtasks are human-only. An AI marks them 'awaiting_human', never 'done'."
+    "M8_before_launch": {
+      "rule": "No task in M9 or M10 may be selected until every M8 task is done.",
+      "requires_done": ["T-110", "T-111", "T-112", "T-113", "T-114"],
+      "guards": ["T-120", "T-121", "T-122", "T-123", "T-124", "T-130", "T-131", "T-132"]
+    },
+    "content_gate": {
+      "rule": "T-130 requires the ARCHITECTURE.md A-3.1 checklist signed off by the school. Placeholders must not reach production, which is what T-113's placeholder gate enforces.",
+      "requires_done": ["T-113"],
+      "guards": ["T-130"]
+    },
+    "human_gates": {
+      "rule": "T-131 is human-only. An AI sets it to 'awaiting_human' and never to 'done'. Only a human may set it to 'done', and that is what unblocks T-132.",
+      "human_only": ["T-131"],
+      "guards": ["T-132"]
+    }
   },
 
   "blocked_on": [],
@@ -85,17 +106,17 @@
     { "id": "T-032", "m": "M2", "title": "Session service (issue, verify, revoke)", "needs": ["T-023"], "status": "todo" },
     { "id": "T-033", "m": "M2", "title": "Durable rate limiting", "needs": ["T-023"], "status": "todo" },
     { "id": "T-034", "m": "M2", "title": "Validation schemas & HTML sanitization", "needs": ["T-023"], "status": "todo" },
-    { "id": "T-035", "m": "M2", "title": "Audit writer (transactional)", "needs": ["T-031"], "status": "todo" },
+    { "id": "T-035", "m": "M2", "title": "Audit writer (transactional)", "needs": ["T-031","T-021"], "status": "todo" },
     { "id": "T-036", "m": "M2", "title": "Cache tag registry & revalidation", "needs": ["T-023"], "status": "todo" },
-    { "id": "T-037", "m": "M2", "title": "Media upload pipeline", "needs": ["T-034"], "status": "todo" },
+    { "id": "T-037", "m": "M2", "title": "Media upload pipeline", "needs": ["T-034","T-012"], "status": "todo" },
     { "id": "T-038", "m": "M2", "title": "Write-pipeline helper (the 6 mandatory stages)", "needs": ["T-031","T-034","T-035","T-036"], "status": "todo" },
 
-    { "id": "T-040", "m": "M3", "title": "Login page & credential flow", "needs": ["T-032","T-033","T-030"], "status": "todo" },
+    { "id": "T-040", "m": "M3", "title": "Login page & credential flow", "needs": ["T-032","T-033","T-030","T-024"], "status": "todo" },
     { "id": "T-041", "m": "M3", "title": "Route middleware & admin guard", "needs": ["T-032"], "status": "todo" },
     { "id": "T-042", "m": "M3", "title": "Password reset by email", "needs": ["T-040"], "status": "todo" },
     { "id": "T-043", "m": "M3", "title": "Forced first-login password change", "needs": ["T-040"], "status": "todo" },
 
-    { "id": "T-050", "m": "M4", "title": "Admin layout & permission-filtered sidebar", "needs": ["T-041","T-031","T-030"], "status": "todo" },
+    { "id": "T-050", "m": "M4", "title": "Admin layout & permission-filtered sidebar", "needs": ["T-041","T-031","T-030","T-002"], "status": "todo" },
     { "id": "T-051", "m": "M4", "title": "Shared admin UI kit (DataTable, DualLocaleField, PermissionGate)", "needs": ["T-050"], "status": "todo" },
     { "id": "T-052", "m": "M4", "title": "Admin dashboard", "needs": ["T-051"], "status": "todo" },
 
@@ -112,19 +133,19 @@
     { "id": "T-070", "m": "M5", "title": "Admin: My Profile", "needs": ["T-051","T-038"], "status": "todo" },
     { "id": "T-071", "m": "M5", "title": "Admin: Media library", "needs": ["T-051","T-037"], "status": "todo" },
 
-    { "id": "T-080", "m": "M6", "title": "Public layout, header, footer, language switcher", "needs": ["T-030","T-036"], "status": "todo" },
-    { "id": "T-081", "m": "M6", "title": "Public: Home", "needs": ["T-080"], "status": "todo" },
-    { "id": "T-082", "m": "M6", "title": "Public: About", "needs": ["T-080"], "status": "todo" },
-    { "id": "T-083", "m": "M6", "title": "Public: Academics + routines/calendar/exams", "needs": ["T-080"], "status": "todo" },
-    { "id": "T-084", "m": "M6", "title": "Public: Admission", "needs": ["T-080"], "status": "todo" },
-    { "id": "T-085", "m": "M6", "title": "Public: Faculty", "needs": ["T-080"], "status": "todo" },
-    { "id": "T-086", "m": "M6", "title": "Public: Notices list + detail", "needs": ["T-080"], "status": "todo" },
-    { "id": "T-087", "m": "M6", "title": "Public: Gallery", "needs": ["T-080"], "status": "todo" },
-    { "id": "T-088", "m": "M6", "title": "Public: Contact + inquiry form", "needs": ["T-080","T-033"], "status": "todo" },
+    { "id": "T-080", "m": "M6", "title": "Public layout, header, footer, language switcher", "needs": ["T-030","T-036","T-002","T-013"], "status": "todo" },
+    { "id": "T-081", "m": "M6", "title": "Public: Home", "needs": ["T-080","T-017"], "status": "todo" },
+    { "id": "T-082", "m": "M6", "title": "Public: About", "needs": ["T-080","T-017"], "status": "todo" },
+    { "id": "T-083", "m": "M6", "title": "Public: Academics + routines/calendar/exams", "needs": ["T-080","T-014"], "status": "todo" },
+    { "id": "T-084", "m": "M6", "title": "Public: Admission", "needs": ["T-080","T-016"], "status": "todo" },
+    { "id": "T-085", "m": "M6", "title": "Public: Faculty", "needs": ["T-080","T-015"], "status": "todo" },
+    { "id": "T-086", "m": "M6", "title": "Public: Notices list + detail", "needs": ["T-080","T-018"], "status": "todo" },
+    { "id": "T-087", "m": "M6", "title": "Public: Gallery", "needs": ["T-080","T-019"], "status": "todo" },
+    { "id": "T-088", "m": "M6", "title": "Public: Contact + inquiry form", "needs": ["T-080","T-033","T-020"], "status": "todo" },
     { "id": "T-089", "m": "M6", "title": "Public: Privacy policy, terms, cookie notice", "needs": ["T-080"], "status": "todo" },
     { "id": "T-090", "m": "M6", "title": "Public: 404, error, empty & maintenance states", "needs": ["T-080"], "status": "todo" },
 
-    { "id": "T-100", "m": "M7", "title": "SEO: metadata, hreflang, sitemap, robots, JSON-LD", "needs": ["T-081","T-082","T-083","T-084","T-085","T-086","T-087","T-088"], "status": "todo" },
+    { "id": "T-100", "m": "M7", "title": "SEO: metadata, hreflang, sitemap, robots, JSON-LD", "needs": ["T-081","T-082","T-083","T-084","T-085","T-086","T-087","T-088","T-089","T-090"], "status": "todo" },
     { "id": "T-101", "m": "M7", "title": "Responsive image delivery", "needs": ["T-087"], "status": "todo" },
     { "id": "T-102", "m": "M7", "title": "Font subsetting & loading strategy", "needs": ["T-002","T-080"], "status": "todo" },
     { "id": "T-103", "m": "M7", "title": "ISR wiring & on-demand revalidation", "needs": ["T-036","T-100"], "status": "todo" },
@@ -134,10 +155,10 @@
     { "id": "T-111", "m": "M8", "title": "Repository & constraint integration tests", "needs": ["T-024"], "status": "todo" },
     { "id": "T-112", "m": "M8", "title": "E2E golden paths (both locales, mobile)", "needs": ["T-088","T-066"], "status": "todo" },
     { "id": "T-113", "m": "M8", "title": "Content & ethics gates (placeholder, consent, stats, i18n parity, leakage)", "needs": ["T-065","T-030"], "status": "todo" },
-    { "id": "T-114", "m": "M8", "title": "CI performance, bundle & a11y budgets", "needs": ["T-103","T-104"], "status": "todo" },
+    { "id": "T-114", "m": "M8", "title": "CI performance, bundle & a11y budgets", "needs": ["T-103","T-104","T-005"], "status": "todo" },
 
     { "id": "T-120", "m": "M9", "title": "Nightly encrypted backup job", "needs": ["T-114"], "status": "todo" },
-    { "id": "T-121", "m": "M9", "title": "Retention purge job (messages 12mo, audit 24mo)", "needs": ["T-114"], "status": "todo" },
+    { "id": "T-121", "m": "M9", "title": "Retention purge job (messages 12mo, audit 24mo)", "needs": ["T-114","T-020"], "status": "todo" },
     { "id": "T-122", "m": "M9", "title": "Uptime, error tracking, auth anomaly alerts", "needs": ["T-114"], "status": "todo" },
     { "id": "T-123", "m": "M9", "title": "Staging & production environments, migration pipeline", "needs": ["T-114"], "status": "todo" },
     { "id": "T-124", "m": "M9", "title": "Weekly content-freshness report", "needs": ["T-122"], "status": "todo" },

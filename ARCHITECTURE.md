@@ -13,7 +13,7 @@
 >
 > | File | Role |
 > |---|---|
-> | **[`build-state.json`](build-state.json)** | **Start here, every session.** ~10KB. Holds the status of all 78 tasks, the resume protocol, and the global stop rules. It is the only place status lives. |
+> | **[`build-state.json`](build-state.json)** | **Start here, every session.** ~10KB. Holds the status of all 77 tasks, the resume protocol, and the global stop rules. It is the only place status lives. |
 > | **[`BUILD-TRACKER.md`](BUILD-TRACKER.md)** | The task catalogue. One card per task: what to load from this file, where to start, what to touch, **where to stop**, and how to verify. |
 > | **This file** | Read only the sections a task card's `Load` line names — system architecture and database design. |
 > | **[`PRODUCT-SPEC.md`](PRODUCT-SPEC.md)** | Page-by-page UI specs, admin screen specs, API reference, tech stack, and reference data — read when a task card's `Load` line points here. |
@@ -134,7 +134,7 @@ The 4 E's, expressed as measurable targets. Anything unmeasurable here is a requ
 | Attribute | Target | Gate |
 |---|---|---|
 | No unverified published claims | Every `site_stats` row has `verified_on`; unverified rows do not render | DB constraint + render guard |
-| No fabricated content | Placeholder markers (`[[CONTENT REQUIRED]]`) block publish | Publish-gate test |
+| No fabricated content | Placeholder markers (`[[CONTENT REQUIRED — DO NOT PUBLISH]]`) block publish | Publish-gate test |
 | Consent recorded | Faculty public profile renders only with `publish_consent_at` and (for photo) `photo_consent_at` | Render guard + test |
 | Data minimisation | Contact messages purged at 12 months; audit logs at 24 months | Scheduled job + test |
 | Language equity | Admin panel fully available in Bangla | i18n parity test covers admin namespace |
@@ -215,7 +215,7 @@ Nothing below can be generated. Until each row has a real value from the school,
 | 23 | Domain registrar login, DNS control confirmation | Owner | Deployment |
 | 24 | Named account owners: hosting, database, storage, email | Owner | Handover / bus factor |
 
-> **Publish gate.** A page section whose backing content is empty or still carries a `[[CONTENT REQUIRED]]` marker does not render on the public site and cannot be moved to `published`. The site launches smaller and honest rather than complete and fictional.
+> **Publish gate.** A page section whose backing content is empty or still carries a `[[CONTENT REQUIRED — DO NOT PUBLISH]]` marker does not render on the public site and cannot be moved to `published`. The site launches smaller and honest rather than complete and fictional.
 
 ---
 
@@ -352,17 +352,27 @@ Each module is a permission unit, a sidebar entry, a set of tables, and a set of
 
 | Module code | Owns tables | Revalidates | Applicable actions |
 |---|---|---|---|
-| `site_settings` | site_settings·branding·registrations·contact_channels·social_links·site_stats | all paths | view, edit |
+| `site_settings` | site_settings, school_registration_ids, contact_channels, social_links, site_stats, pages, `<lookup tables §B-3>` — see †, ‡ | all paths | view, edit |
 | `home` | hero_slides, home_content, features | `/`, `/en` | view, edit |
 | `about` | about_content, committee_members, achievements | `/about`, `/en/about` | view, edit |
-| `academics` | academic_years, class_*, subjects, routines, calendar, exams | `/academics/**` | view, add, edit, delete |
+| `academics` | academic_years, academic_info, class_grades, class_sections, class_subjects, class_routines, subjects, exam_terms, exams, calendar_events | `/academics/**` | view, add, edit, delete |
 | `admission` | admission_*, fee_structures, fee_items | `/admission`, `/en/admission` | view, add, edit, delete |
-| `faculty` | faculty, faculty_translations, faculty_private, faculty_subjects | `/faculty`, `/en/faculty` | view, add, edit, delete |
-| `notice` | notices, notice_translations, notice_attachments | `/notices/**`, `/` | view, add, edit, delete, **publish** |
+| `faculty` | faculty, faculty_subjects, faculty_class_assignments — see § | `/faculty`, `/en/faculty` | view, add, edit, delete |
+| `notice` | notices, notice_attachments | `/notices/**`, `/` | view, add, edit, delete, **publish** |
 | `gallery` | gallery_albums, gallery_photos, gallery_videos | `/gallery`, `/` | view, add, edit, delete |
 | `contact` | contact_messages | — | view, delete |
-| `media` | media_assets | — | view, add, delete |
-| `users` | users, permissions, grants | — | **Super Admin only** |
+| `media` | media_assets, media_variants | — | view, add, delete |
+| `users` | users, user_module_permissions, user_special_grants, sessions, password_reset_tokens, login_attempts, rate_limit_counters | — | **Super Admin only** |
+
+**Reading the "Owns tables" column.** Each row lists the module's **base** tables. A `*_translations` table is owned by the same module as its base table and is not listed separately. Reference and lookup tables (§B-3) are covered by the `site_settings` module — see the note below. `activity_logs` is append-only and owned by no module: nothing may edit it (§A-11 / ADR-011). `site_branding` and `faculty_private` are deliberately unowned — see their footnotes.
+
+> `site_branding` is deliberately not owned by any module. It is gated by the `edit_branding` special grant — see §A-9.4.
+
+> **§** `faculty_private` is deliberately not owned by the `faculty` module. Personal contact data is Super Admin only (§A-16.1); `faculty:edit` grants the public profile and its translations, never the private record. See T-065's Contract.
+
+> **†** The §B-3 reference and lookup tables are site-wide configuration, so the `site_settings` module owns them — `notice_categories`, `gallery_categories`, `calendar_event_types`, `fee_types`, `designations`, `class_stages`, `registration_id_types`, `contact_channel_types`, `social_platforms`, `video_providers`, `content_statuses`, `contact_message_statuses` and their translations. This is what makes ADR-002 real: adding a notice category is an INSERT performed by an admin holding `site_settings:edit`, not a migration. **Excluded:** `locales`, `roles`, `modules`, `permission_actions`, `module_actions` and `special_grants` are *system* lookups — structural, not content. They are seeded (§B-19) and are not editable through the admin UI in Phase 1.
+
+> **‡** `pages` / `page_translations` hold per-page SEO metadata (§B-6). They sit in `site_settings` because SEO metadata is site-wide configuration and that module already revalidates all paths. T-100 is their writer.
 
 > Note `publish` as a distinct action on `notice`. This is the mechanism for AUDIT E3-8 (no unreviewed content reaching the public site): a junior admin can be granted `add`+`edit` but not `publish`.
 
@@ -710,7 +720,7 @@ For **every** mutating endpoint, automated assertions:
 
 | Gate | Fails when |
 |---|---|
-| Placeholder guard | Any `[[CONTENT REQUIRED]]` marker reaches `status = 'published'` |
+| Placeholder guard | Any string matching `\[\[CONTENT REQUIRED` reaches `status = 'published'` — prefix match, so marker variants cannot slip past |
 | Statistic honesty | A `site_stats` row without `verified_on` renders publicly |
 | Consent guard | A faculty profile renders without `publish_consent_at` (or a photo without `photo_consent_at`) |
 | i18n parity | A key exists in `bn.json` but not `en.json` (or vice versa) in any namespace, **including admin** |
@@ -724,6 +734,8 @@ A module is done when: acceptance criteria written as Given/When/Then are green 
 ### A-13.5 Pre-launch human gates
 
 Not automatable, and not skippable: security review sign-off · manual accessibility pass with a screen reader in **both** languages · **restore rehearsal from a real backup** · content verification (every published fact traced to a source and date) · staff walkthrough — an office member publishes a notice unaided, in Bangla · privacy policy live · super-admin password rotated and account owners recorded.
+
+Each gate above corresponds to a subtask of T-131. An AI sets T-131 to `awaiting_human`; only a human sets it to `done`, and doing so is what unblocks T-132.
 
 ---
 
@@ -848,6 +860,8 @@ Absent entirely from the source documents (AUDIT E3). Phase 1 already collects p
 ---
 
 ## A-18. Architecture Decision Records
+
+> `PRD.md`, `site_map.md` and the AUDIT findings referenced in the Rejected-alternative and Rationale columns are superseded source documents, retained here only as provenance. They are not present in this repository and are not required to build. The decision and its rationale, as stated in each row, are self-contained.
 
 | # | Decision | Rejected alternative | Rationale |
 |---|---|---|---|
@@ -2308,7 +2322,7 @@ The SQL above is authoritative. Prisma is a client over it, mapped with `@@map` 
 - ❌ Any principal's message, history, vision, or mission text.
 - ❌ Any admission banner asserting an open cycle.
 
-Where a section needs a value to be structurally valid, use `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, which the publish gate rejects.
+Where a section needs a value to be structurally valid, write the canonical literal `[[CONTENT REQUIRED — DO NOT PUBLISH]]` — and only that form. The publish gate rejects it, matching on the prefix `[[CONTENT REQUIRED` (§A-13.3), so any variant is caught too.
 
 ---
 

@@ -223,7 +223,11 @@ shifa-edu/
 | `/contact` | `/en/contact` | Contact Us |
 | `/privacy-policy` | `/en/privacy-policy` | Privacy Policy (§A-16.2) |
 | `/terms` | `/en/terms` | Terms |
+| `/cookie-notice` | `/en/cookie-notice` | Cookie Notice (§A-16.2, T-089) |
 | `/login` | `/en/login` | Login |
+| *(any unmatched path)* | *(any unmatched path under `/en`)* | 404, error, and maintenance states — bilingual, **not indexed** (T-090) |
+
+> **Login route and role selection.** `/login` + `/en/login` is the authoritative path pair; `/admin/login`, from অংশ ২ of the historical `school-website-spec-final.md`, is **superseded** (that document also contradicts itself, giving `/login` in its §৯). The Phase 1 login page has **no role selector** — a single username-or-email + password form that routes by the authenticated user's stored role (§A-9.2, AUDIT S-8). The historical spec's four-way selector (Administrator / Teacher / Student / Guardian) is not buildable in Phase 1 in any case: `faculty` is Phase 2a and `student` / `guardian` are Phase 2b per `ARCHITECTURE.md` §A-9.5.
 
 ### Admin routes (13) — bilingual UI (ADR-007), no locale prefix on the path itself
 
@@ -277,42 +281,42 @@ shifa-edu/
 
 | Section | Data source |
 |---|---|
-| History | `about_content.history` |
-| Vision & Mission | `about_content.vision` (blockquote), `.mission` (bullet list) |
-| Principal's Message | `about_content.principal_message` + photo — does not render without the principal's publish consent (§A-16.2) |
-| Registration Info | `registrations` (EIIN, EMIS code, School Code, BIIN) |
+| History | `about_content_translations.history_html` |
+| Vision & Mission | `about_content_translations.vision_html` (blockquote), `.mission_html` (bullet list) |
+| Principal's Message | `about_content_translations.principal_message_html` + `about_content.principal_photo_media_id` — does not render without the principal's publish consent (§A-16.2) |
+| Registration Info | `school_registration_ids` (EIIN, EMIS code, School Code, BIIN — one row per type from the `registration_id_types` lookup) |
 | Managing Committee | `committee_members` |
 | Achievements | `achievements` |
-| Curriculum Highlights | `academic_info.curriculum` |
+| Curriculum Highlights | `academic_info_translations.curriculum_html` |
 
 ### P-6.4 Academics (`/academics`)
 
 | Section | Data source |
 |---|---|
 | Class Structure | `class_grades` + `class_sections` (real section rows, §ADR "sections as first-class table") |
-| Curriculum / Board | `academic_info.curriculum` |
+| Curriculum / Board | `academic_info_translations.curriculum_html` |
 | Subject List | `subjects` grouped by class, via `class_subjects` junction |
-| Class Timing | `academic_info.class_timing` |
-| Assessment Method | `academic_info.assessment_method` |
+| Class Timing | `academic_info_translations.class_timing_html` |
+| Assessment Method | `academic_info_translations.assessment_html` |
 
-**Sub-pages:** `/academics/routines` (`routines`, per-class PDF), `/academics/calendar` (`calendar_events` + `calendar_event_types` lookup), `/academics/exams` (`exam_schedules`, filterable by class).
+**Sub-pages:** `/academics/routines` (`class_routines`, one current PDF per class grade / section / year), `/academics/calendar` (`calendar_events` + `calendar_event_types` lookup), `/academics/exams` (`exams`, each a child of an `exam_terms` row, filterable by class).
 
 ### P-6.5 Admission (`/admission`)
 
 | Section | Data source |
 |---|---|
-| Status Banner | `admission_info.is_open`, `.status_banner` |
-| Process Steps | `admission_info.process_steps` |
-| Eligibility | `admission_info.eligibility` |
-| Important Dates | `admission_info.important_dates` |
-| Required Documents | `admission_info.required_documents` |
+| Status Banner | `admission_cycles.is_open` on the `is_current` cycle + `admission_cycle_translations.status_banner` |
+| Process Steps | `admission_steps` + `admission_step_translations`, ordered by `step_number` — rows, rendered as a stepper, not one rich-text blob |
+| Eligibility | `admission_eligibility` (one row per `class_grades` row: `min_age_years`, `max_age_years`, `age_as_of`) + `admission_eligibility_translations.note` |
+| Important Dates | `admission_cycles.opens_on`, `.closes_on`, `.exam_date` |
+| Required Documents | `admission_documents` (`is_mandatory`, `sort_order`) + `admission_document_translations` |
 | Fee Structure | `fee_structures` + `fee_items` + `fee_types` — table: Class → Admission Fee → Monthly Fee → itemized other charges. Currency ৳ (BDT). |
-| Download Form | `admission_info.form_media_id` |
+| Download Form | `admission_cycles.form_media_id` |
 | FAQ | `admission_faqs`, accordion |
 
 ### P-6.6 Faculty / Our Teachers (`/faculty`)
 
-Card grid (3–4/row desktop), `faculty` + `faculty_translations` where `is_active = true`, sorted by `sort_order`. Each card: photo (placeholder if none), name, designation, subject, qualification; optional experience years and bio. **A profile does not render without `publish_consent_at`, and its photo does not render without `photo_consent_at`** (§A-16.2). Internal fields (personal phone/email, joining date) live in `faculty_private` — a physically separate table the public read path never joins to (§A-16.1).
+Card grid (3–4/row desktop), `faculty` + `faculty_translations` where `status_code = 'published'` **and** `publish_consent_at IS NOT NULL` (and `deleted_at IS NULL`), sorted by `sort_order`. Each card: photo (placeholder if none), name, designation, subject, qualification; optional experience years and bio. **A profile does not render without `publish_consent_at`, and its photo does not render without `photo_consent_at`** (§A-16.2). Internal fields (personal phone/email, joining date) live in `faculty_private` — a physically separate table the public read path never joins to (§A-16.1).
 
 ### P-6.7 Notice Board (`/notices`)
 
@@ -332,7 +336,7 @@ One route (ADR-006), query-filtered: `?type=photos|videos&category=`.
 | Section | Data source |
 |---|---|
 | Contact Info | `site_settings` + `contact_channels` (address, labeled phone numbers, email, office hours) |
-| Google Map | `site_settings.google_map_embed` |
+| Google Map | `site_settings.google_map_embed_url` |
 | Inquiry Form | Writes a `contact_messages` row |
 
 **Form validation:** Name required (min 2 chars) · Phone required, Bangladeshi format (`01XXXXXXXXX`) · Email optional, valid format if present · Message required (min 10 chars) · rate-limited to 3 submissions/IP/hour (§A-12). The form must show the consent statement required by §A-16.2 next to the submit button — what is collected, why, and the 12-month retention period.
@@ -401,7 +405,7 @@ Status toggle + banner text. Process/eligibility/documents/dates: dual rich text
 | `photo_consent_at`, `publish_consent_at` | Must both be set before the profile is eligible to render publicly |
 | Active toggle, sort order | |
 
-On creation: system auto-generates a `faculty_id` (e.g. `SIS-F-001`) and a temporary credential, stored against the shared `users` table (not a second password store — §A-9.1), displayed once, copyable. Login stays disabled until Phase 2.
+On creation: the system assigns an `employee_code` (e.g. `SIS-F-001`). **No credential is created** — no `users` row, no password hash, nothing displayed to copy; `faculty.user_id` (nullable, `-- Phase 2 login`) stays **NULL**. Credentials are created at Phase 2 enable-time (ADR-004, T-065 Contract), never at profile creation — the shared `users` table is the one credential store (§A-9.1), and dormant hashes waiting years for a login that is not yet built are attack surface with no benefit.
 
 ### P-7.9 Notice Manager (`/admin/notices`)
 
@@ -513,7 +517,7 @@ Checklist:
 - [ ] Unique `<meta name="description">` per page, per locale
 - [ ] Single `<h1>` per page
 - [ ] Semantic HTML5 landmarks
-- [ ] `alt` text on every image (sourced from `media_assets.alt_text`, translatable — §A-10.1)
+- [ ] `alt` text on every image (sourced from `media_asset_translations.alt_text`, per locale — §A-10.1)
 - [ ] `<link rel="canonical">` on every page
 - [ ] Open Graph tags
 - [ ] JSON-LD Organization schema

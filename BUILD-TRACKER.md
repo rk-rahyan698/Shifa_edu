@@ -38,7 +38,7 @@ ARCHITECTURE.md  ──▶ read ONLY the sections in the card's **Load** line
 | **Load** | The *only* architecture sections to open. If a card says `§B-6`, do not read `§B-5` or `§B-7`. |
 | **Start** | The precondition — what must already be true |
 | **Do** | The work. Nothing outside this list. |
-| **Files** | The only paths this task may create or modify |
+| **Files** | The only paths this task may create or modify. A path may appear in several cards — later cards extend it additively and must not rewrite earlier cards' content in it. |
 | **Contract** | What later tasks are allowed to depend on. Do not change a published contract without a new task id. |
 | **Stop** | The explicit boundary — including what is deliberately *not* in scope |
 | **Verify** | Must pass before the task may be marked `done` |
@@ -46,7 +46,7 @@ ARCHITECTURE.md  ──▶ read ONLY the sections in the card's **Load** line
 ### Non-negotiables
 
 1. **One task per session.** Never chain, even if the next looks trivial. Chaining is how scope drift and unreviewable diffs happen.
-2. **Never edit a `done` task's output.** Add a new task id; mark the old one `superseded`.
+2. **Never revise a `done` task's work.** If a done task's output is wrong, add a new task with a new id and set the old one's status to `superseded`. Additively extending a shared file (adding a script to `package.json`, adding a job to `ci.yml`, appending a section to `docs/RUNBOOK.md`) is **not** a revision and is allowed when that path appears in the current card's **Files** list.
 3. **Never originate a fact about the school.** See `ARCHITECTURE.md` §A-3.1. Use `[[CONTENT REQUIRED — DO NOT PUBLISH]]`.
 4. **Scope drift = stop.** If the work needs a file outside **Files**, stop and report rather than expanding.
 5. **`PRODUCT-SPEC.md` assumes every decision in `ARCHITECTURE.md` Parts A/B.** If a task card's `Load` line names both, `ARCHITECTURE.md` wins on anything they disagree about.
@@ -81,7 +81,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-001 · Repo, Next.js, TypeScript, Tailwind
 **Needs** — · **Unlocks** T-002, T-003, T-005
 **Load** *(none — self-contained)*
-**Start** Empty `d:/Shifa_edu` alongside the existing `.md` docs. `git init` first.
+**Start** The repository already contains the documentation set — `ARCHITECTURE.md`, `PRODUCT-SPEC.md`, `BUILD-TRACKER.md`, `build-state.json`, `design-system.md`, `school-website-spec-final.md` — and a written `README.md` that already points at the four docs and this tracker. T-001 adds the code scaffold **around** those files; it does not start from an empty directory and must not overwrite or reformat any of them. `git init` only if the repository is not already initialised.
 **Do** Next.js 14+ App Router, TypeScript strict, Tailwind, ESLint + Prettier, `.gitignore`, `.editorconfig`, folder skeleton `src/{app,components,lib,i18n,types}`, `README.md` pointing at the four docs and this tracker.
 **Files** `package.json`, `tsconfig.json`, `next.config.js`, `tailwind.config.ts`, `.eslintrc`, `.prettierrc`, `.gitignore`, `README.md`, `src/**` (empty index files only)
 **Contract** `@/` path alias → `src/`. Strict TS on.
@@ -90,7 +90,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-002 · Design tokens & typography
+#### T-002 · Design tokens & typography (incl. Bangla fonts)
 **Needs** T-001 · **Unlocks** T-050, T-080, T-102
 **Load** `ARCHITECTURE.md` §A-8 · `design-system.md` §2, §3, §5, §9
 **Start** T-001 builds clean.
@@ -126,7 +126,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-005 · CI skeleton
+#### T-005 · CI skeleton (lint, typecheck, test, secret scan)
 **Needs** T-001 · **Unlocks** T-114
 **Load** `ARCHITECTURE.md` §A-14.2
 **Start** T-001 done.
@@ -156,7 +156,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-011 · Migration: identity, sessions, authorization
-**Needs** T-010 · **Unlocks** T-012, T-021, T-031, T-032, T-033
+**Needs** T-010 · **Unlocks** T-012, T-021
 **Load** `ARCHITECTURE.md` §A-9, §B-4
 **Start** T-010 applied.
 **Do** `users`, `user_module_permissions` (incl. the **composite FK to `module_actions`**), `user_special_grants`, `sessions`, `password_reset_tokens`, `login_attempts`, `rate_limit_counters`. Partial unique indexes on live username/email.
@@ -180,7 +180,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-013 · Migration: site config & SEO
-**Needs** T-012 · **Unlocks** T-014, T-017, T-018, T-019, T-060, T-080
+**Needs** T-012 · **Unlocks** T-014, T-017, T-018, T-019, T-080
 **Load** `ARCHITECTURE.md` §A-9.4, §B-6
 **Start** T-012 applied.
 **Do** `site_branding`(+tr), `site_settings`(+tr), `school_registration_ids`, `contact_channels`(+tr), `social_links`, `site_stats`(+tr), `pages`, `page_translations`. Include the singleton `CHECK (id = 1)` on both singletons and `ck_stat_verified`.
@@ -192,7 +192,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-014 · Migration: academics
-**Needs** T-013 · **Unlocks** T-015, T-016, T-022, T-063, T-083
+**Needs** T-013 · **Unlocks** T-015, T-016, T-083
 **Load** `ARCHITECTURE.md` §B-8
 **Start** T-013 applied.
 **Do** `academic_years`(+tr), `academic_info`(+tr), `class_grades`(+tr), `class_sections`, `subjects`(+tr), `class_subjects`, `class_routines`(+`ux_routine_current`), `calendar_events`(+tr), `exam_terms`(+tr), `exams`(+tr).
@@ -204,7 +204,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-015 · Migration: faculty
-**Needs** T-014 · **Unlocks** T-022, T-065, T-085
+**Needs** T-014 · **Unlocks** T-022, T-085
 **Load** `ARCHITECTURE.md` §A-16.2, §B-7
 **Start** T-014 applied.
 **Do** `faculty`, `faculty_translations`, `faculty_private`, `faculty_subjects`, `faculty_class_assignments` + the public partial index and `ck_faculty_photo_consent`.
@@ -216,7 +216,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-016 · Migration: admission & fees
-**Needs** T-014 · **Unlocks** T-022, T-064, T-084
+**Needs** T-014 · **Unlocks** T-022, T-084
 **Load** `ARCHITECTURE.md` §B-9
 **Start** T-014 applied.
 **Do** `admission_cycles`(+tr), `admission_steps`(+tr), `admission_documents`(+tr), `admission_eligibility`(+tr), `admission_faqs`(+tr), `fee_structures`, `fee_items`.
@@ -228,7 +228,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-017 · Migration: home & about content
-**Needs** T-013 · **Unlocks** T-022, T-061, T-062, T-081, T-082
+**Needs** T-013 · **Unlocks** T-022, T-081, T-082
 **Load** `ARCHITECTURE.md` §B-10
 **Start** T-013 applied.
 **Do** `hero_slides`(+tr), `home_content`(+tr), `features`(+tr), `about_content`(+tr), `committee_members`(+tr), `achievements`(+tr).
@@ -240,7 +240,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-018 · Migration: notices
-**Needs** T-013 · **Unlocks** T-022, T-066, T-086
+**Needs** T-013 · **Unlocks** T-022, T-086
 **Load** `ARCHITECTURE.md` §B-11
 **Start** T-013 applied.
 **Do** `notices` (+`ck_notice_published`, public partial index), `notice_translations` (per-locale unique slug), `notice_attachments`(+tr).
@@ -252,7 +252,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-019 · Migration: gallery
-**Needs** T-013 · **Unlocks** T-022, T-067, T-087
+**Needs** T-013 · **Unlocks** T-022, T-087
 **Load** `ARCHITECTURE.md` §B-12
 **Start** T-013 applied.
 **Do** `gallery_albums`(+tr), `gallery_photos`(+tr), `gallery_videos`(+tr).
@@ -264,7 +264,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-020 · Migration: contact messages
-**Needs** T-010 · **Unlocks** T-022, T-068, T-088, T-121
+**Needs** T-010 · **Unlocks** T-022, T-088, T-121
 **Load** `ARCHITECTURE.md` §A-16.1, §B-13
 **Start** T-010 applied.
 **Do** `contact_messages` including the **`GENERATED ALWAYS … STORED`** `purge_after` column and both indexes.
@@ -275,7 +275,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-021 · Migration: audit log
+#### T-021 · Migration: audit log (append-only)
 **Needs** T-011 · **Unlocks** T-022, T-035
 **Load** `ARCHITECTURE.md` §B-14, §B-16 (Exception 1)
 **Start** T-011 applied.
@@ -299,7 +299,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-023 · Prisma schema mapping
+#### T-023 · Prisma schema mapping over the SQL
 **Needs** T-022 · **Unlocks** T-024, T-030, T-031, T-032, T-033, T-034, T-036
 **Load** `ARCHITECTURE.md` §B-18
 **Start** All migrations applied.
@@ -328,8 +328,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 > This milestone builds the layer every feature depends on. Nothing here renders UI.
 
-#### T-030 · i18n runtime
-**Needs** T-023 · **Unlocks** T-040, T-050, T-080
+#### T-030 · i18n runtime: locales, fallback, JSON namespaces
+**Needs** T-023 · **Unlocks** T-040, T-050, T-080, T-113
 **Load** `ARCHITECTURE.md` §A-7
 **Start** T-023 done.
 **Do** Locale resolution from URL prefix (`''`→bn, `en`→en). `bn.json`/`en.json` with namespaces `common`, `public`, `admin`, `errors`. `t()` helper, `useLocale`, locale-aware `Link`. Fallback helper returning `{ value, isFallback, lang }` per §A-7.3.
@@ -340,7 +340,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-031 · Permission engine
+#### T-031 · Permission engine (server-side authorization)
 **Needs** T-023 · **Unlocks** T-035, T-038, T-050
 **Load** `ARCHITECTURE.md` §A-9.3, §A-9.4, §A-5.2
 **Start** T-023 done.
@@ -352,7 +352,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-032 · Session service
+#### T-032 · Session service (issue, verify, revoke)
 **Needs** T-023 · **Unlocks** T-040, T-041
 **Load** `ARCHITECTURE.md` §A-9.2
 **Start** T-023 done.
@@ -376,7 +376,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-034 · Validation & sanitization
+#### T-034 · Validation schemas & HTML sanitization
 **Needs** T-023 · **Unlocks** T-037, T-038
 **Load** `ARCHITECTURE.md` §A-5.1, §A-12 (XSS row)
 **Start** T-023 done.
@@ -388,8 +388,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-035 · Audit writer
-**Needs** T-031, T-021 · **Unlocks** T-038
+#### T-035 · Audit writer (transactional)
+**Needs** T-021, T-031 · **Unlocks** T-038
 **Load** `ARCHITECTURE.md` §B-14, §A-5.1 (stage 5)
 **Start** T-031 and T-021 done.
 **Do** `writeAudit(tx, {actor, action, module, entityTable, entityId, summary, diff, ip})` accepting a Prisma transaction client. Snapshot `username`/`role` from the actor at write time. Diff builder producing `{field:{from,to}}`.
@@ -400,7 +400,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-036 · Cache tags & revalidation
+#### T-036 · Cache tag registry & revalidation
 **Needs** T-023 · **Unlocks** T-038, T-080, T-103
 **Load** `ARCHITECTURE.md` §A-6
 **Start** T-023 done.
@@ -413,7 +413,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-037 · Media upload pipeline
-**Needs** T-034, T-012 · **Unlocks** T-061…T-067, T-071
+**Needs** T-012, T-034 · **Unlocks** T-061, T-062, T-063, T-064, T-065, T-066, T-067, T-071
 **Load** `ARCHITECTURE.md` §A-10
 **Start** T-034 and T-012 done.
 **Do** Storage client with `public`/`private` buckets. Upload: size cap by type → **MIME sniff from file bytes** → EXIF strip → randomized key → image resize ≤1920 + 400/800 variants → AVIF/WebP → checksum dedupe → `media_assets` + `media_variants` insert. Signed-URL helper (15 min) for private objects.
@@ -424,8 +424,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-038 · Write-pipeline helper
-**Needs** T-031, T-034, T-035, T-036 · **Unlocks** all of M5
+#### T-038 · Write-pipeline helper (the 6 mandatory stages)
+**Needs** T-031, T-034, T-035, T-036 · **Unlocks** T-060, T-061, T-062, T-063, T-064, T-065, T-066, T-067, T-068, T-069, T-070
 **Load** `ARCHITECTURE.md` §A-5.1
 **Start** T-031, T-034, T-035, T-036 done.
 **Do** A single `mutate({ module, action, schema, handler })` wrapper executing the six mandatory stages in order: authenticate → authorize → validate → sanitize → persist+audit in one transaction → invalidate.
@@ -440,7 +440,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 # M3 · Authentication
 
 #### T-040 · Login page & credential flow
-**Needs** T-032, T-033, T-030 · **Unlocks** T-041, T-042, T-043, T-050
+**Needs** T-024, T-030, T-032, T-033 · **Unlocks** T-042, T-043
 **Load** `ARCHITECTURE.md` §A-9.2
 **Start** M2 auth services done, seed run.
 **Do** `/login` (+`/en/login`): username-or-email + password, bilingual. Verify bcrypt (cost 12), rate-limit check before verification, `login_attempts` record, lockout honoured, session issue, redirect by resolved role.
@@ -463,7 +463,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-042 · Password reset
+#### T-042 · Password reset by email
 **Needs** T-040 · **Unlocks** —
 **Load** `ARCHITECTURE.md` §A-9.2 (reset row)
 **Start** T-040 done.
@@ -491,7 +491,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 # M4 · Admin shell
 
 #### T-050 · Admin layout & permission-filtered sidebar
-**Needs** T-041, T-031, T-030 · **Unlocks** T-051
+**Needs** T-002, T-030, T-031, T-041 · **Unlocks** T-051
 **Load** `ARCHITECTURE.md` §A-5.2, §A-9.3 · `PRODUCT-SPEC.md` §P-7.1 (layout sketch only)
 **Start** T-041 done.
 **Do** Admin shell: header (user, role, locale toggle, logout), sidebar rendered from the module registry filtered by `view` permission, mobile drawer, breadcrumbs. **Bilingual** via the `admin` i18n namespace (ADR-007).
@@ -502,8 +502,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-051 · Shared admin UI kit
-**Needs** T-050 · **Unlocks** all of M5
+#### T-051 · Shared admin UI kit (DataTable, DualLocaleField, PermissionGate)
+**Needs** T-050 · **Unlocks** T-052, T-060, T-061, T-062, T-063, T-064, T-065, T-066, T-067, T-068, T-069, T-070, T-071
 **Load** `ARCHITECTURE.md` §A-7.3, §A-9.3 · `design-system.md` §5
 **Start** T-050 done.
 **Do** `PermissionGate`, `DataTable` (server-side pagination + search + sort), `DualLocaleField` (BN required / EN optional with the "EN missing" badge), `RichTextEditor`, `ImagePicker`, `SortableList`, `ConfirmDialog` (names the child records at risk), `Toast`, `FormShell`.
@@ -532,7 +532,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 > Every task here uses `mutate()` from T-038. Every one is independently shippable. Pattern per module: read model → list/edit UI → Server Actions → permission checks → audit → revalidate.
 
 #### T-060 · Admin: Site Settings + protected branding
-**Needs** T-051, T-038 · **Unlocks** —
+**Needs** T-038, T-051 · **Unlocks** —
 **Load** `ARCHITECTURE.md` §A-9.4, §B-6
 **Start** T-038, T-051 done.
 **Do** Two visually separated panels. **Branding** (name BN/EN, logo, reversed logo, favicon, OG image) gated on `super_admin OR edit_branding`. **Settings** (address, office hours, slogan, phones, socials, registration ids, statistics with `verified_on`, map) gated on `site_settings:edit`.
@@ -544,7 +544,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-061 · Admin: Home content
-**Needs** T-051, T-038, T-037 · **Load** `ARCHITECTURE.md` §B-10
+**Needs** T-037, T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §B-10
 **Do** Hero slides (upload, reorder, schedule, activate) · intro text (dual locale) · CTA block · features CRUD.
 **Files** `src/app/admin/home/**`, `src/lib/modules/home/**`
 **Contract** Every uploaded image requires alt text in Bangla before save.
@@ -553,7 +553,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-062 · Admin: About content
-**Needs** T-051, T-038, T-037 · **Load** `ARCHITECTURE.md` §B-10
+**Needs** T-037, T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §B-10
 **Do** History / vision / mission / principal's message (dual rich text) · principal photo + signature · committee CRUD (with `publish_consent_at`) · achievements CRUD.
 **Files** `src/app/admin/about/**`, `src/lib/modules/about/**`
 **Contract** A committee member without consent cannot be activated.
@@ -562,7 +562,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-063 · Admin: Academics
-**Needs** T-051, T-038, T-037 · **Load** `ARCHITECTURE.md` §B-8
+**Needs** T-037, T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §B-8
 **Do** Academic years · general info · class grades CRUD · **sections CRUD** · subject master CRUD · class↔subject assignment · routine upload (one current per class/section/year) · calendar events · exam terms and exams.
 **Files** `src/app/admin/academics/**`, `src/lib/modules/academics/**`
 **Contract** Deleting a class grade with dependent fee structures or exams is **refused with an explanation** (`RESTRICT`), never cascaded.
@@ -571,7 +571,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-064 · Admin: Admission & fees
-**Needs** T-051, T-038, T-037 · **Load** `ARCHITECTURE.md` §B-9
+**Needs** T-037, T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §B-9
 **Do** Admission cycle (open/closed, dates, banner) · steps CRUD · documents CRUD · eligibility per class · FAQs CRUD · form PDF · **fee grid** (class × fee type, add any fee type).
 **Files** `src/app/admin/admission/**`, `src/lib/modules/admission/**`
 **Contract** Fee amounts are `NUMERIC`. New charge types are added by creating a `fee_type`, never a schema change.
@@ -579,8 +579,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-065 · Admin: Faculty
-**Needs** T-051, T-038, T-037 · **Load** `ARCHITECTURE.md` §A-16.2, §B-7
+#### T-065 · Admin: Faculty (+consent gates)
+**Needs** T-037, T-038, T-051 · **Unlocks** T-113 · **Load** `ARCHITECTURE.md` §A-16.2, §B-7
 **Do** Faculty CRUD: public fields (dual locale), designation, subjects (multi), photo, sort, status. Separate clearly-labelled **Internal** panel writing `faculty_private`. Consent checkboxes stamping `publish_consent_at` / `photo_consent_at`. Auto `employee_code` (`SIS-F-001`).
 **Files** `src/app/admin/faculty/**`, `src/lib/modules/faculty/**`
 **Contract** The internal panel is visible only to `super_admin`. Publishing without consent is impossible. **Do not generate a faculty password here** — credentials are created at Phase 2 enable-time, not years in advance.
@@ -588,8 +588,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-066 · Admin: Notices
-**Needs** T-051, T-038, T-037 · **Load** `ARCHITECTURE.md` §B-11
+#### T-066 · Admin: Notices (+publish action)
+**Needs** T-037, T-038, T-051 · **Unlocks** T-112 · **Load** `ARCHITECTURE.md` §B-11
 **Do** Notice CRUD with dual-locale title/excerpt/body, per-locale slug auto-generation, category, **multiple attachments**, pin, scheduled `published_at`, and a **separate `publish` action** distinct from `edit`.
 **Files** `src/app/admin/notices/**`, `src/lib/modules/notices/**`
 **Contract** `notice:publish` is checked independently — an admin with `add`+`edit` but not `publish` can only save drafts.
@@ -597,8 +597,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-067 · Admin: Gallery
-**Needs** T-051, T-038, T-037 · **Load** `ARCHITECTURE.md` §B-12
+#### T-067 · Admin: Gallery (albums, photos, videos)
+**Needs** T-037, T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §B-12
 **Do** Albums CRUD (category, cover, event date) · multi-photo upload into an album with per-photo caption, alt text and `subject_consent_at` · videos by provider + video id.
 **Files** `src/app/admin/gallery/**`, `src/lib/modules/gallery/**`
 **Contract** A photo always belongs to an album. Video embed URLs are derived, never stored.
@@ -606,8 +606,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-068 · Admin: Contact messages
-**Needs** T-051, T-038 · **Load** `ARCHITECTURE.md` §A-16.1, §B-13
+#### T-068 · Admin: Contact messages inbox
+**Needs** T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-16.1, §B-13
 **Do** Paginated searchable inbox, detail view, mark read (records `read_by_user_id`), status change, soft delete. Show each message's `purge_after` date.
 **Files** `src/app/admin/messages/**`, `src/lib/modules/messages/**`
 **Contract** Read-only plus delete. No reply feature in Phase 1.
@@ -616,7 +616,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-069 · Admin: Manage Admins & permission matrix
-**Needs** T-051, T-038 · **Unlocks** T-110 · **Load** `ARCHITECTURE.md` §A-9.3, §A-9.4, §A-5.2, §B-4
+**Needs** T-038, T-051 · **Unlocks** T-110 · **Load** `ARCHITECTURE.md` §A-9.3, §A-9.4, §A-5.2, §B-4
 **Do** Super-Admin-only page: list, create (generated password, `must_change_password`), suspend (→ revoke sessions), soft delete (→ revoke sessions). **Permission matrix** rendered from `module_actions`, so inapplicable cells render `—` from data, not from hardcoding. Special grants panel for `edit_branding`.
 **Files** `src/app/admin/users/**`, `src/lib/modules/users/**`
 **Contract** Only `super_admin` reaches any of this. Every grant change writes an audit row naming the module, action and target user.
@@ -626,7 +626,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-070 · Admin: My Profile
-**Needs** T-051, T-038 · **Load** `ARCHITECTURE.md` §A-9.2
+**Needs** T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-9.2
 **Do** View own name, username, role, last login. Change own password (revokes other sessions). Read-only view of own permissions. Preferred locale.
 **Files** `src/app/admin/profile/**`
 **Contract** A user may never alter their own role or permissions here.
@@ -635,7 +635,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-071 · Admin: Media library
-**Needs** T-051, T-037 · **Load** `ARCHITECTURE.md` §A-10, §B-5
+**Needs** T-037, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-10, §B-5
 **Do** Browse/search assets, edit alt text and caption per locale, show **where each asset is used**, soft delete (blocked while referenced), storage usage summary.
 **Files** `src/app/admin/media/**`, `src/lib/modules/media/**`
 **Contract** Deletion of a referenced asset is refused and names the referencing records.
@@ -647,7 +647,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 # M6 · Public site
 
 #### T-080 · Public layout, header, footer, language switcher
-**Needs** T-030, T-036 · **Unlocks** T-081…T-090
+**Needs** T-002, T-013, T-030, T-036 · **Unlocks** T-081, T-082, T-083, T-084, T-085, T-086, T-087, T-088, T-089, T-090, T-102
 **Load** `ARCHITECTURE.md` §A-7.1, §A-8 · `design-system.md` §5
 **Start** T-030 and T-036 done.
 **Do** Locale-segment route group (`/` = bn, `/en` = en). Sticky header with gold bottom rule, nav, **path-rewriting** language switcher, login link. Four-column footer. Mobile drawer. Render-side HTML sanitization layer.
@@ -659,7 +659,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-081 · Public: Home
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-10, §B-17 (homepage row) · `PRODUCT-SPEC.md` §P-6.2
+**Needs** T-017, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-10, §B-17 (homepage row) · `PRODUCT-SPEC.md` §P-6.2
 **Do** Hero slider · school at a glance · **stats bar (renders only verified stats)** · latest 5 notices · features · gallery preview (6) · CTA banner.
 **Files** `src/app/(public)/[[...locale]]/page.tsx`, `src/components/public/{HeroSlider,StatsBar,FeatureGrid}.tsx`
 **Contract** Any section whose content is empty or placeholder-marked **does not render**. No empty shells.
@@ -668,7 +668,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-082 · Public: About
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-10, §B-6 · `PRODUCT-SPEC.md` §P-6.3
+**Needs** T-017, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-10, §B-6 · `PRODUCT-SPEC.md` §P-6.3
 **Do** History · vision · mission · principal's message · registration ids · committee (consented only) · achievements · curriculum highlights.
 **Files** `src/app/(public)/[[...locale]]/about/page.tsx`
 **Contract** Committee members without consent are omitted silently.
@@ -676,8 +676,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-083 · Public: Academics + sub-pages
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-8 · `PRODUCT-SPEC.md` §P-6.4
+#### T-083 · Public: Academics + routines/calendar/exams
+**Needs** T-014, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-8 · `PRODUCT-SPEC.md` §P-6.4
 **Do** `/academics` (class structure by stage, curriculum, subjects accordion, timing, assessment) plus `/academics/routines`, `/academics/calendar`, `/academics/exams`. All four in both locales.
 **Files** `src/app/(public)/[[...locale]]/academics/**`
 **Contract** Everything scoped to the **current** academic year, with the year shown so parents know what they are reading.
@@ -686,7 +686,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-084 · Public: Admission
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-9 · `PRODUCT-SPEC.md` §P-6.5
+**Needs** T-016, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-9 · `PRODUCT-SPEC.md` §P-6.5
 **Do** Status banner (open/closed styling) · process stepper · eligibility table · important dates · required documents · **fee table with ৳** · form download · FAQ accordion.
 **Files** `src/app/(public)/[[...locale]]/admission/page.tsx`
 **Contract** The banner shows "open" **only** when `admission_cycles.is_open` is true and within dates. Never a hardcoded string.
@@ -695,7 +695,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-085 · Public: Faculty
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-7, §A-16.2 · `PRODUCT-SPEC.md` §P-6.6
+**Needs** T-015, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-7, §A-16.2 · `PRODUCT-SPEC.md` §P-6.6
 **Do** Card grid of published, consented faculty: photo (or initials placeholder), name, designation, subjects, qualification, optional experience and bio.
 **Files** `src/app/(public)/[[...locale]]/faculty/page.tsx`, `src/components/public/FacultyCard.tsx`
 **Contract** The query **must not** touch `faculty_private`. T-113 enforces this in CI.
@@ -704,7 +704,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-086 · Public: Notices list + detail
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-11, §B-17 · `PRODUCT-SPEC.md` §P-6.7
+**Needs** T-018, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-11, §B-17 · `PRODUCT-SPEC.md` §P-6.7
 **Do** `/notices` paginated (10/page), category filter via query param, pinned first. `/notices/[slug]` with body, category, date, multiple attachment downloads, WhatsApp/Facebook share, back link.
 **Files** `src/app/(public)/[[...locale]]/notices/**`
 **Contract** Visibility is exactly `status='published' AND published_at <= now() AND deleted_at IS NULL`. A future-dated notice must not appear.
@@ -713,7 +713,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-087 · Public: Gallery
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-12 · ADR-006
+**Needs** T-019, T-080 · **Unlocks** T-100, T-101 · **Load** `ARCHITECTURE.md` §B-12 · ADR-006
 **Do** Single `/gallery` route with `?type=photos|videos` and `?category=` — **no `/gallery/photos` or `/gallery/videos` routes** (ADR-006). Grid, lightbox with keyboard navigation, lazy loading, video modal from the provider template.
 **Files** `src/app/(public)/[[...locale]]/gallery/page.tsx`, `src/components/public/{GalleryGrid,Lightbox,VideoModal}.tsx`
 **Contract** Filter state lives in the URL so a filtered view is shareable.
@@ -722,7 +722,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-088 · Public: Contact + inquiry form
-**Needs** T-080, T-033 · **Load** `ARCHITECTURE.md` §A-16.2, §B-13 · `PRODUCT-SPEC.md` §P-6.9
+**Needs** T-020, T-033, T-080 · **Unlocks** T-100, T-112 · **Load** `ARCHITECTURE.md` §A-16.2, §B-13 · `PRODUCT-SPEC.md` §P-6.9
 **Do** Contact cards from `contact_channels`, office hours, map embed, and the inquiry form (name, phone, email optional, message) with validation, rate limiting, **explicit consent text beside submit**, hashed IP, success toast.
 **Files** `src/app/(public)/[[...locale]]/contact/page.tsx`, `src/app/api/contact/route.ts`
 **Contract** The consent line states what is collected, why, and the 12-month retention, and links to the privacy policy.
@@ -731,7 +731,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-089 · Public: Privacy policy, terms, cookie notice
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §A-16
+**Needs** T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §A-16
 **Do** `/privacy` and `/terms` in both locales, content from the §A-16.1 data inventory. Cookie notice for the language-preference cookie. Footer links.
 **Files** `src/app/(public)/[[...locale]]/{privacy,terms}/page.tsx`, `src/components/public/CookieNotice.tsx`
 **Contract** Drafted by AI, **flagged for human/legal review** before launch — this is a T-131 gate, not a T-089 one.
@@ -740,7 +740,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-090 · Public: 404, error, empty & maintenance states
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §A-13.4 (empty states)
+**Needs** T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §A-13.4 (empty states)
 **Do** Bilingual `not-found.tsx`, `error.tsx`, loading skeletons, a reusable empty-state component ("No notices yet"), and a maintenance-mode flag.
 **Files** `src/app/(public)/[[...locale]]/{not-found,error,loading}.tsx`, `src/components/public/EmptyState.tsx`
 **Contract** No page ever renders a bare blank region. Empty is a designed state.
@@ -751,8 +751,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 # M7 · SEO, performance, accessibility
 
-#### T-100 · SEO
-**Needs** all M6 page tasks · **Unlocks** T-103
+#### T-100 · SEO: metadata, hreflang, sitemap, robots, JSON-LD
+**Needs** T-081, T-082, T-083, T-084, T-085, T-086, T-087, T-088, T-089, T-090 · **Unlocks** T-103, T-104
 **Load** `ARCHITECTURE.md` §A-7.1, §B-6 (pages/page_translations) · `PRODUCT-SPEC.md` §P-9
 **Do** Per-page metadata from `page_translations`, `hreflang` alternates **to distinct URLs** plus `x-default`, canonical, Open Graph, JSON-LD `EducationalOrganization`, `sitemap.xml` (both locales, English entries only where translated), `robots.txt` disallowing `/admin`.
 **Files** `src/app/sitemap.ts`, `src/app/robots.ts`, `src/lib/seo.ts`, metadata exports per page
@@ -762,7 +762,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-101 · Responsive image delivery
-**Needs** T-087 · **Load** `ARCHITECTURE.md` §A-10.3, §A-11
+**Needs** T-087 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-10.3, §A-11
 **Do** Image component consuming `media_variants` for `srcset`, explicit width/height from `media_assets` (prevents CLS), AVIF→WebP→JPEG, blur placeholder, lazy below the fold.
 **Files** `src/components/ui/Image.tsx`, `next.config.js`
 **Contract** Every public image goes through this component. No bare `<img>`.
@@ -770,8 +770,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-102 · Font subsetting & loading
-**Needs** T-002, T-080 · **Load** `ARCHITECTURE.md` §A-8.2, §A-11
+#### T-102 · Font subsetting & loading strategy
+**Needs** T-002, T-080 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-8.2, §A-11
 **Do** Self-host all four families, subset Bangla to the actual glyph range, `font-display: swap`, preload the body weight only, verify the ≤200KB total budget.
 **Files** `public/fonts/**`, `src/lib/fonts.ts`, `src/app/globals.css`
 **Contract** Total font payload ≤ 200KB. Unsubsetted Bangla families alone exceed this.
@@ -780,7 +780,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-103 · ISR wiring & on-demand revalidation
-**Needs** T-036, T-100 · **Load** `ARCHITECTURE.md` §A-6, §A-11
+**Needs** T-036, T-100 · **Unlocks** T-114 · **Load** `ARCHITECTURE.md` §A-6, §A-11
 **Do** Static generation per locale for all public routes, cache tags attached to reads, admin saves calling `revalidateForModule`, admin routes forced dynamic.
 **Files** page-level `revalidate`/`generateStaticParams`, `src/lib/cache.ts`
 **Contract** Steady state = **0 DB queries** on a public cache hit.
@@ -788,8 +788,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-104 · Accessibility remediation
-**Needs** T-100 · **Load** `ARCHITECTURE.md` §A-2 (Effective, a11y row), §A-8.2 · `design-system.md` §9
+#### T-104 · Accessibility remediation pass (both locales)
+**Needs** T-100 · **Unlocks** T-114 · **Load** `ARCHITECTURE.md` §A-2 (Effective, a11y row), §A-8.2 · `design-system.md` §9
 **Do** Run `axe-core` over every public and admin page in **both** locales. Fix to WCAG 2.2 AA: focus order, visible focus rings, landmarks, alt text, form labels, contrast (gold on white is large-text/icon only), keyboard traps, `lang` attributes on fallback text.
 **Files** across components as needed
 **Contract** Zero critical or serious violations, in both locales.
@@ -803,8 +803,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 > **Phase gate: no M9 or M10 task may start until every task here is `done`.**
 
-#### T-110 · Authorization matrix suite
-**Needs** T-069 · **Load** `ARCHITECTURE.md` §A-13.2
+#### T-110 · Authorization matrix test suite (~40 cases)
+**Needs** T-069 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-13.2
 **Do** Build the full matrix from §A-13.2 — every case, for every mutating endpoint. Plus a **static import test** asserting no public route imports an admin or private repository, and a test asserting every Server Action goes through `mutate()`.
 **Files** `tests/authorization/**`
 **Contract** This suite blocks CI. It is never skipped or marked `.todo`.
@@ -814,32 +814,32 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-111 · Repository & constraint integration tests
-**Needs** T-024 · **Load** `ARCHITECTURE.md` §B-15, §B-16
+**Needs** T-024 · **Unlocks** — · **Load** `ARCHITECTURE.md` §B-15, §B-16
 **Do** Real-Postgres tests for: singleton guards, `ck_stat_verified`, consent checks, `RESTRICT` refusals, soft delete + restore, `purge_after` generation, audit append-only, seed idempotency, locale fallback queries, one-current-routine.
 **Files** `tests/db/**`
 **Stop** Tests only. **Verify** Every constraint documented in Part B has a test that proves it fires.
 
 ---
 
-#### T-112 · E2E golden paths
-**Needs** T-088, T-066 · **Load** `ARCHITECTURE.md` §A-13.1
+#### T-112 · E2E golden paths (both locales, mobile)
+**Needs** T-066, T-088 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-13.1
 **Do** Playwright: visitor reads a notice in Bangla → switches to English → submits the contact form → admin logs in → sees the message → creates and publishes a notice → it appears publicly in both locales. Run at desktop **and 360px**.
 **Files** `tests/e2e/**`, `playwright.config.ts`
 **Stop** Tests only. **Verify** Green on both viewports in CI.
 
 ---
 
-#### T-113 · Content & ethics gates
-**Needs** T-065, T-030 · **Load** `ARCHITECTURE.md` §A-13.3
+#### T-113 · Content & ethics gates (placeholder, consent, stats, i18n parity, leakage)
+**Needs** T-030, T-065 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-13.3
 **Do** Automated gates: placeholder guard, statistic-verification guard, faculty consent guard, i18n key parity **including the admin namespace**, private-data leakage (static import analysis), retention-job correctness.
 **Files** `tests/gates/**`, `scripts/check-i18n-parity.ts`
 **Contract** These are ethics controls, not style checks. They block CI.
-**Stop** Gates only. **Verify** Each gate fails on a deliberately seeded violation and passes once removed.
+**Stop** Gates only. **Verify** Each gate fails on a deliberately seeded violation and passes once removed. The placeholder gate is tested with **both** the canonical marker `[[CONTENT REQUIRED — DO NOT PUBLISH]]` and a deliberately malformed variant (the marker truncated before its `— DO NOT PUBLISH` suffix) — the §A-13.3 prefix match must reject both.
 
 ---
 
-#### T-114 · CI budgets
-**Needs** T-103, T-104 · **Load** `ARCHITECTURE.md` §A-2 (Efficient table), §A-14.2
+#### T-114 · CI performance, bundle & a11y budgets
+**Needs** T-005, T-103, T-104 · **Unlocks** T-120, T-121, T-122, T-123 · **Load** `ARCHITECTURE.md` §A-2 (Efficient table), §A-14.2
 **Do** Add to CI: Lighthouse CI (LCP ≤ 2.5s throttled, CLS ≤ 0.1), bundle-size budget (≤150KB gz/route), font budget (≤200KB), `axe` gate, query-count assertions. Wire all M8 suites into the pipeline.
 **Files** `.github/workflows/ci.yml`, `lighthouserc.json`, `.size-limit.json`
 **Contract** Budgets are blocking, not advisory. Raising one requires a new ADR.
@@ -850,8 +850,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 # M9 · Operations
 
-#### T-120 · Nightly encrypted backup
-**Needs** T-114 · **Load** `ARCHITECTURE.md` §A-14.3
+#### T-120 · Nightly encrypted backup job
+**Needs** T-114 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-14.3
 **Do** Scheduled `pg_dump` → encrypted → off-site bucket. Retain 7 daily + 4 weekly + 3 monthly. Failure alerts. **A written, step-by-step restore procedure** in `docs/RUNBOOK.md`.
 **Files** `scripts/backup.ts`, `.github/workflows/backup.yml`, `docs/RUNBOOK.md`
 **Contract** The runbook must be followable by someone who did not build the system.
@@ -860,8 +860,8 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-121 · Retention purge job
-**Needs** T-114 · **Load** `ARCHITECTURE.md` §A-16.2, §B-13
+#### T-121 · Retention purge job (messages 12mo, audit 24mo)
+**Needs** T-020, T-114 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-16.2, §B-13
 **Do** Daily job: hard-delete contact messages past `purge_after`, audit logs past 24 months, storage objects for assets soft-deleted >30 days and referenced by nothing. Log each run.
 **Files** `scripts/purge.ts`, `.github/workflows/purge.yml`
 **Contract** Purge is irreversible — it runs only against rows past their documented retention.
@@ -869,7 +869,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-122 · Monitoring & alerting
+#### T-122 · Uptime, error tracking, auth anomaly alerts
 **Needs** T-114 · **Unlocks** T-124 · **Load** `ARCHITECTURE.md` §A-15
 **Do** Uptime monitor (5 min), Sentry, alert on >20 failed logins/hour for one username, backup-failure alert, DB keepalive if on a pausing free tier.
 **Files** `src/lib/monitoring.ts`, `.github/workflows/keepalive.yml`, `docs/RUNBOOK.md`
@@ -877,7 +877,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 ---
 
-#### T-123 · Staging & production environments
+#### T-123 · Staging & production environments, migration pipeline
 **Needs** T-114 · **Unlocks** T-130 · **Load** `ARCHITECTURE.md` §A-14.1, §A-14.2
 **Do** Provision staging (anonymized data — contact messages and faculty personal fields scrubbed) and production. Deployment pipeline: staging migrate → smoke → **manual approval** → production migrate → deploy → smoke.
 **Files** `.github/workflows/deploy.yml`, `docs/RUNBOOK.md`
@@ -887,7 +887,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-124 · Weekly content-freshness report
-**Needs** T-122 · **Load** `ARCHITECTURE.md` §A-15 (freshness row)
+**Needs** T-122 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-15 (freshness row)
 **Do** Weekly email to the principal: notices published in the last 30 days, unread messages >7 days old, sections still holding placeholders, unverified statistics.
 **Files** `scripts/freshness-report.ts`, `.github/workflows/freshness.yml`
 **Contract** Bangla, since the recipient is the principal.
@@ -898,17 +898,17 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 # M10 · Launch
 
-#### T-130 · Content load
-**Needs** T-123 · **Load** `ARCHITECTURE.md` §A-3.1
+#### T-130 · Content load from A-3.1 checklist
+**Needs** T-123 · **Unlocks** T-131 · **Load** `ARCHITECTURE.md` §A-3.1
 **Do** Load every real item from the A-3.1 checklist through the admin panel. Verify every published statistic has a `verified_on` date and a source.
 **Files** *(none — data entry, not code)*
 **Contract** **No fabricated content.** Any item still missing stays unpublished; the site launches smaller and honest. An AI may assist with data entry it is given, and may originate nothing.
-**Stop** Content only. **Verify** Zero `[[CONTENT REQUIRED]]` markers in published rows; T-113 gates pass against production data.
+**Stop** Content only. **Verify** Zero `[[CONTENT REQUIRED — DO NOT PUBLISH]]` markers in published rows; T-113 gates pass against production data.
 
 ---
 
-#### T-131 · Human gates
-**Needs** T-130 · **Load** `ARCHITECTURE.md` §A-13.5
+#### T-131 · Human gates (security, a11y, restore rehearsal, staff walkthrough)
+**Needs** T-130 · **Unlocks** T-132 · **Load** `ARCHITECTURE.md` §A-13.5
 **Do (human-only — an AI marks these `awaiting_human`, never `done`)**
 Security review sign-off · manual screen-reader pass in both languages · **restore rehearsal from a real backup into staging, recorded** · content verification (every published fact traced to a source and date) · staff walkthrough (an office member publishes a notice unaided, in Bangla) · privacy policy legal review · account owners and deputies documented.
 **Files** `docs/LAUNCH-SIGNOFF.md`
@@ -916,8 +916,8 @@ Security review sign-off · manual screen-reader pass in both languages · **res
 
 ---
 
-#### T-132 · Go-live
-**Needs** T-131 · **Load** `ARCHITECTURE.md` §A-14.3
+#### T-132 · Go-live: domain, DNS, seed, rotate credentials, handover
+**Needs** T-131 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-14.3
 **Do** Point `shifaintschool.com` DNS, verify HTTPS/HSTS, run production seed, **rotate the super-admin password**, submit sitemaps to Search Console, confirm monitoring and backups are live, hand over `docs/RUNBOOK.md` and the Bangla admin manual.
 **Files** `docs/RUNBOOK.md`, `docs/ADMIN-MANUAL-BN.md`
 **Contract** Handover is part of go-live, not a follow-up. Risk R9 (bus factor) closes here or not at all.

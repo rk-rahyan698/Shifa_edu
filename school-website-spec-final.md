@@ -1,6 +1,26 @@
 # স্কুল ওয়েবসাইট — পেজ কনটেন্ট গাইড ও অ্যাডমিন প্যানেল স্পেসিফিকেশন
 
-> **Status.** This is the original Bangla-language requirements document — kept as the record of *business intent* (what the school asked for and why). It is **not** current technical guidance: `ARCHITECTURE.md` (system architecture + database design) and `design-system.md` (visual design) are authoritative for all technical decisions, and `PRODUCT-SPEC.md` is authoritative for current page-by-page UI specs, admin screens, and the API surface. Where this document's permission model, page structure, or design ideas differ from those three — e.g. the permission matrix below is the model `ARCHITECTURE.md` §A-9.3 actually kept, but the page/admin route structure was revised (see `ARCHITECTURE.md`'s ADR table) — the newer documents win. The unfinished "next step" at the end of this document (going page-by-page to collect the school's real content) is now tracked, with named owners, as the Content Collection Checklist in `ARCHITECTURE.md` §A-3.1.
+> ## ⛔ SUPERSEDED — HISTORICAL RECORD ONLY / বাতিল — শুধুমাত্র ঐতিহাসিক নথি
+>
+> **English.** This document records the school's **original business intent** only. It is **not** an implementation specification. Every technical section in it — the permission model, the table sketches, the route and login structure — is **superseded by `ARCHITECTURE.md`**, specifically:
+>
+> - **ADR-003** — permissions are rows in a junction table (`user_module_permissions`); presence of a row is the grant, absence is denial. **Never** `can_add` / `can_edit` / `can_delete` / `can_view` boolean columns.
+> - **ADR-005** — locale-prefixed URLs: Bangla unprefixed (`/notices`), English `/en`-prefixed (`/en/notices`).
+> - **ADR-006** — a single `/gallery` route with query filters; no `/gallery/photos` or `/gallery/videos` routes.
+> - **ADR-007** — the admin panel is **bilingual**, not English-only.
+>
+> **No agent may implement anything from this file directly.** Read it to understand what the school asked for and why; build only from `ARCHITECTURE.md`, `PRODUCT-SPEC.md` and `design-system.md`.
+>
+> **বাংলা।** এই ডকুমেন্টে কেবল স্কুলের **মূল ব্যবসায়িক চাহিদা** লিপিবদ্ধ আছে। এটি কোনো **ইমপ্লিমেন্টেশন স্পেসিফিকেশন নয়**। এখানকার প্রতিটি টেকনিক্যাল অংশ — পারমিশন মডেল, টেবিলের কাঠামো, রুট ও লগইন স্ট্রাকচার — **`ARCHITECTURE.md` দ্বারা বাতিল ও প্রতিস্থাপিত**, বিশেষত:
+>
+> - **ADR-003** — পারমিশন থাকবে একটি জাংশন টেবিলের সারি হিসেবে (`user_module_permissions`); সারি থাকা মানে অনুমতি, সারি না থাকা মানে নিষেধ। **কখনোই** `can_add` / `can_edit` / `can_delete` / `can_view` বুলিয়ান কলাম নয়।
+> - **ADR-005** — URL-এ লোকেল প্রিফিক্স: বাংলা প্রিফিক্সবিহীন (`/notices`), ইংরেজি `/en` প্রিফিক্সসহ (`/en/notices`)।
+> - **ADR-006** — একটিমাত্র `/gallery` রুট, কুয়েরি ফিল্টারসহ; `/gallery/photos` বা `/gallery/videos` নামে আলাদা রুট নেই।
+> - **ADR-007** — অ্যাডমিন প্যানেল **দ্বিভাষিক**, শুধু ইংরেজি নয়।
+>
+> **কোনো এজেন্ট এই ফাইল থেকে সরাসরি কিছু ইমপ্লিমেন্ট করবে না।** স্কুল কী চেয়েছিল এবং কেন — কেবল সেটুকু বোঝার জন্যই এটি পড়া হবে; তৈরি করার সময় অনুসরণ করতে হবে `ARCHITECTURE.md`, `PRODUCT-SPEC.md` ও `design-system.md`।
+
+> **Status.** This is the original Bangla-language requirements document — kept as the record of *business intent* (what the school asked for and why). It is **not** current technical guidance: `ARCHITECTURE.md` (system architecture + database design) and `design-system.md` (visual design) are authoritative for all technical decisions, and `PRODUCT-SPEC.md` is authoritative for current page-by-page UI specs, admin screens, and the API surface. Where this document's permission model, page structure, or design ideas differ from those three — e.g. the module × action *concept* behind the permission matrix below is what `ARCHITECTURE.md` §A-9.3 kept, but its `can_add` / `can_edit` / `can_delete` / `can_view` boolean columns were **not** — ADR-003 replaces them with rows in `user_module_permissions` — and the page/admin route structure was revised (see `ARCHITECTURE.md`'s ADR table) — the newer documents win. The unfinished "next step" at the end of this document (going page-by-page to collect the school's real content) is now tracked, with named owners, as the Content Collection Checklist in `ARCHITECTURE.md` §A-3.1.
 >
 > এই ডকুমেন্টটা দুই ভাগে সাজানো:
 > **অংশ ১** — প্রতিটা পাবলিক পেজে কী কী তথ্য থাকবে (ফাঁকা জায়গায় নিজের স্কুলের তথ্য বসাও)
@@ -224,6 +244,10 @@ Default অবস্থায় নতুন Admin অ্যাকাউন্�
 - ক্লিক করলে মডিউল × অ্যাকশন টগল লিস্ট খুলবে, Save করলেই সাথে সাথে অ্যাক্সেস পরিবর্তিত হবে
 
 ## টেকনিক্যাল ডিজাইন (AI-কে বলার জন্য)
+
+> ⛔ **এই অংশটি বাতিল — ইমপ্লিমেন্ট করা যাবে না।** নিচের `Permissions Table`-এর `can_add` / `can_edit` / `can_delete` / `can_view` বুলিয়ান কলামগুলো **ADR-003** দ্বারা স্পষ্টভাবে প্রত্যাখ্যাত। প্রকৃত মডেল একটি জাংশন টেবিল — দেখুন `ARCHITECTURE.md` §A-9.3 ও §B-4।
+>
+> ⛔ **Superseded — do not implement.** The `can_add` / `can_edit` / `can_delete` / `can_view` boolean columns sketched below are explicitly rejected by **ADR-003**. The real model is the junction table `user_module_permissions` — see `ARCHITECTURE.md` §A-9.3 and §B-4.
 
 ```
 Users Table:

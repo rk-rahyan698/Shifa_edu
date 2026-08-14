@@ -1,1 +1,37 @@
 .claude/
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# testing
+/coverage
+
+# environment — never commit real secrets (T-003)
+.env
+.env.*
+!.env.example
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
+# editors & os
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# misc
+.vercel

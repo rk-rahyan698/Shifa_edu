@@ -1,0 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* T-002 adds the colour tokens, type scale, Bangla body utility and base
+   component classes here. T-001 wires Tailwind only. */

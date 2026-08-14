@@ -1,6 +1,6 @@
 # Shifa International School — Website & Admin Panel
 
-A bilingual (Bangla-default, English-secondary) public website and content management system, specified in full before any code is written. This repository currently holds **documentation only**.
+A bilingual (Bangla-default, English-secondary) public website and content management system, specified in full before any code is written. The specification is complete; the build is in progress and currently holds the Next.js scaffold only (T-001) — no design tokens, no database, no pages.
 
 ## Document map
 
@@ -27,6 +27,25 @@ Paste this to start any session:
 ```
 Read build-state.json and follow its read_order_for_ai. Do exactly one task, then stop.
 ```
+
+## Running the scaffold
+
+Requires Node.js 20 or newer.
+
+```bash
+npm install
+npm run dev        # serves http://localhost:3000
+```
+
+| Script | Purpose |
+|---|---|
+| `npm run dev` | Development server |
+| `npm run build` / `npm start` | Production build and serve |
+| `npm run typecheck` | `tsc --noEmit`, strict mode |
+| `npm run lint` | ESLint (`next/core-web-vitals` + `next/typescript`) |
+| `npm run format` / `format:check` | Prettier over the code only — the documentation files are deliberately left unformatted |
+
+Stack: Next.js App Router, TypeScript (strict), Tailwind CSS. Source lives under `src/{app,components,lib,i18n,types}`; `@/` resolves to `src/`.
 
 ## Ground rule
 

@@ -1,0 +1,16 @@
+// Prisma is a client over authoritative SQL, not the source of the schema —
+// ARCHITECTURE.md §B-18. Tables arrive as hand-written migrations across M1
+// (T-010…T-022) and are mapped here in T-023 with @@map / @map, keeping
+// snake_case in the database and idiomatic names in TypeScript.
+//
+// T-004 declares the datasource and generator only. No models. No enums:
+// lookup tables stay lookup tables (ADR-002, §B-18).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}

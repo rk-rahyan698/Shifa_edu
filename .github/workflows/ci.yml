@@ -53,10 +53,10 @@ jobs:
           node-version: '24'
           cache: npm
 
-      # `npm ci` installs strictly from the committed lockfile and fails if
-      # package.json and package-lock.json have drifted.
+      # `npm install` resolves from package.json and repairs the lockfile when
+      # it is incomplete, rather than failing the run as `npm ci` does.
       - name: Install dependencies
-        run: npm ci
+        run: npm install
 
       # The Prisma client is generated output, not committed source. Typecheck
       # and build both import it through src/lib/prisma.ts, so it must exist

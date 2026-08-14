@@ -223,7 +223,9 @@ shifa-edu/
 | `/contact` | `/en/contact` | Contact Us |
 | `/privacy-policy` | `/en/privacy-policy` | Privacy Policy (§A-16.2) |
 | `/terms` | `/en/terms` | Terms |
+| `/cookie-notice` | `/en/cookie-notice` | Cookie Notice (§A-16.2, T-089) |
 | `/login` | `/en/login` | Login |
+| *(any unmatched path)* | *(any unmatched path under `/en`)* | 404, error, and maintenance states — bilingual, **not indexed** (T-090) |
 
 > **Login route and role selection.** `/login` + `/en/login` is the authoritative path pair; `/admin/login`, from অংশ ২ of the historical `school-website-spec-final.md`, is **superseded** (that document also contradicts itself, giving `/login` in its §৯). The Phase 1 login page has **no role selector** — a single username-or-email + password form that routes by the authenticated user's stored role (§A-9.2, AUDIT S-8). The historical spec's four-way selector (Administrator / Teacher / Student / Guardian) is not buildable in Phase 1 in any case: `faculty` is Phase 2a and `student` / `guardian` are Phase 2b per `ARCHITECTURE.md` §A-9.5.
 

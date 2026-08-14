@@ -33,7 +33,8 @@
     "If a task cannot be completed as written, set status 'blocked', fill blocked_reason, add to blocked_on, and STOP.",
     "If the work would need files outside the card's Files list, STOP and report scope drift instead of expanding.",
     "Every completed task = one commit, message 'T-0XX: <title>'.",
-    "PRODUCT-SPEC.md assumes every decision in ARCHITECTURE.md Parts A/B. If a task's Load line names both and they disagree, ARCHITECTURE.md wins."
+    "PRODUCT-SPEC.md assumes every decision in ARCHITECTURE.md Parts A/B. If a task's Load line names both and they disagree, ARCHITECTURE.md wins.",
+    "build-state.json `needs` is the only authoritative dependency graph. A card's `Needs` and `Unlocks` lines are a human-readable mirror; if they disagree with the JSON, the JSON wins and the card must be corrected."
   ],
 
   "phase_gates": {

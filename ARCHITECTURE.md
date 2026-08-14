@@ -352,7 +352,7 @@ Each module is a permission unit, a sidebar entry, a set of tables, and a set of
 
 | Module code | Owns tables | Revalidates | Applicable actions |
 |---|---|---|---|
-| `site_settings` | site_settings·branding·registrations·contact_channels·social_links·site_stats | all paths | view, edit |
+| `site_settings` | site_settings·registrations·contact_channels·social_links·site_stats | all paths | view, edit |
 | `home` | hero_slides, home_content, features | `/`, `/en` | view, edit |
 | `about` | about_content, committee_members, achievements | `/about`, `/en/about` | view, edit |
 | `academics` | academic_years, class_*, subjects, routines, calendar, exams | `/academics/**` | view, add, edit, delete |
@@ -363,6 +363,8 @@ Each module is a permission unit, a sidebar entry, a set of tables, and a set of
 | `contact` | contact_messages | — | view, delete |
 | `media` | media_assets | — | view, add, delete |
 | `users` | users, permissions, grants | — | **Super Admin only** |
+
+> `site_branding` is deliberately not owned by any module. It is gated by the `edit_branding` special grant — see §A-9.4.
 
 > Note `publish` as a distinct action on `notice`. This is the mechanism for AUDIT E3-8 (no unreviewed content reaching the public site): a junior admin can be granted `add`+`edit` but not `publish`.
 
@@ -850,6 +852,8 @@ Absent entirely from the source documents (AUDIT E3). Phase 1 already collects p
 ---
 
 ## A-18. Architecture Decision Records
+
+> `PRD.md`, `site_map.md` and the AUDIT findings referenced in the Rejected-alternative and Rationale columns are superseded source documents, retained here only as provenance. They are not present in this repository and are not required to build. The decision and its rationale, as stated in each row, are self-contained.
 
 | # | Decision | Rejected alternative | Rationale |
 |---|---|---|---|

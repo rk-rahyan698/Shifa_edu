@@ -2322,7 +2322,7 @@ The SQL above is authoritative. Prisma is a client over it, mapped with `@@map` 
 - ❌ Any principal's message, history, vision, or mission text.
 - ❌ Any admission banner asserting an open cycle.
 
-Where a section needs a value to be structurally valid, use `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, which the publish gate rejects. The canonical literal is `[[CONTENT REQUIRED — DO NOT PUBLISH]]`. The publish gate matches on the prefix `[[CONTENT REQUIRED` (§A-13.3), so any variant is also caught, but only the canonical form may be written.
+Where a section needs a value to be structurally valid, write the canonical literal `[[CONTENT REQUIRED — DO NOT PUBLISH]]` — and only that form. The publish gate rejects it, matching on the prefix `[[CONTENT REQUIRED` (§A-13.3), so any variant is caught too.
 
 ---
 

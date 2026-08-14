@@ -22,7 +22,7 @@ Two further files drive the build itself:
 
 ## Resuming work
 
-That is the whole prompt:
+Paste this to start any session:
 
 ```
 Read build-state.json and follow its read_order_for_ai. Do exactly one task, then stop.

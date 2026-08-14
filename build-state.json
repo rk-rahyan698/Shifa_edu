@@ -11,7 +11,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-14",
-  "updated_by": "T-002",
+  "updated_by": "T-003",
 
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
@@ -63,7 +63,7 @@
     "content_owners": { "affects": ["T-130"], "status": "unassigned", "note": "A-3.1's 24 rows carry role owners, not named individuals. T-130 requires a named person and a deputy per row - see risk R9 (bus factor)." }
   },
 
-  "progress": { "done": 2, "total": 77 },
+  "progress": { "done": 3, "total": 77 },
 
   "milestones": [
     { "id": "M0", "title": "Foundation",            "tasks": "T-001..T-005", "done": false },
@@ -82,7 +82,7 @@
   "tasks": [
     { "id": "T-001", "m": "M0", "title": "Repo, Next.js, TypeScript, Tailwind", "needs": [], "status": "done" },
     { "id": "T-002", "m": "M0", "title": "Design tokens & typography (incl. Bangla fonts)", "needs": ["T-001"], "status": "done" },
-    { "id": "T-003", "m": "M0", "title": "Env config & secret handling", "needs": ["T-001"], "status": "todo" },
+    { "id": "T-003", "m": "M0", "title": "Env config & secret handling", "needs": ["T-001"], "status": "done" },
     { "id": "T-004", "m": "M0", "title": "PostgreSQL + Prisma wiring", "needs": ["T-003"], "status": "todo" },
     { "id": "T-005", "m": "M0", "title": "CI skeleton (lint, typecheck, test, secret scan)", "needs": ["T-001"], "status": "todo" },
 
@@ -204,6 +204,13 @@
       "by": "T-002",
       "result": "Design tokens and typography. globals.css declares the thirteen A-8.1 colour custom properties verbatim plus the two A-8.2 font stacks; tailwind.config.ts maps them onto primary/ink/accent/teal/khaki/surface/surface-alt/border/success/danger, the four-family heading and body stacks, a clamped H1/H2/H3 scale and the fixed body sizes. Bangla body 17px/1.75 lands both as the text-body-bn utility and as an automatic html:lang(bn) base rule, so it applies without a class and does not shrink on mobile. Base classes per design-system.md §5: btn-primary/secondary/cta, link, link-on-primary, card (+accent bars), input/label/field-error, callout, rule-accent, all built to the contrast rules in §9 (gold never carries text; the gold CTA label is Charcoal Ink; footer link hover is the gold tint). src/lib/fonts.ts holds the TS-side stacks, weights, Bangla sizing constants and the interim Google Fonts URL. Two judgement calls in the report: webfonts load via an @import of the Google Fonts CDN, flagged for T-102 to replace with self-hosted subsets, since the card requires the families to render but forbids subsetting; and verification used a temporary /scratch-t002 route (the card's Files list has no page), deleted before commit, mirroring T-001's probe. Verify: build, tsc --noEmit and eslint clean; dev returns 200 with both headings rendering; the only hex literals under src/ are the thirteen in globals.css.",
       "next": "T-003"
+    },
+    {
+      "at": "2026-08-14",
+      "task": "T-003",
+      "by": "T-003",
+      "result": "Env config and secret handling. .env.example lists every required key with no values, grouped by concern: NODE_ENV, NEXT_PUBLIC_SITE_URL, DATABASE_URL (T-004), SESSION_SECRET (T-032), SMTP_HOST/PORT/USER/PASSWORD + EMAIL_FROM (T-042), and the S3-compatible STORAGE_* set for the public/private bucket pair of A-10 (T-037). src/lib/env.ts parses once at module load through Zod and throws a named EnvValidationError listing every offending key with a readable message and the 'copy .env.example to .env.local' hint; server and client keys are separate schemas, NEXT_PUBLIC_ values are read as literal process.env members so Next inlines them, and in the browser env is a Proxy that throws by name on any server-only key instead of yielding undefined. Validation is real, not shape-only: DATABASE_URL must be a postgresql:// string, SESSION_SECRET >= 32 chars, SMTP_PORT coerced to an int in 1..65535, EMAIL_FROM an address, URLs absolute with no trailing slash. .gitignore already carried the .env* + !.env.example rules from T-001 and needed no change. Two judgement calls in the report: zod was added to package.json, which is outside the card's Files list but unavoidable for a 'Zod-validated' loader; and the key list is derived from A-12 plus the mechanisms named elsewhere in ARCHITECTURE (buckets, reset email), since no document enumerates variable names - T-004/T-037/T-042 may extend it. Verify: EnvValidationError raised with the missing key named on an empty and a partial environment, clean boot on a complete one (SMTP_PORT typed number); build, tsc --noEmit and eslint clean; no .env file exists in the tree, only .env.example.",
+      "next": "T-004"
     }
   ]
 }

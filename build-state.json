@@ -11,7 +11,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-14",
-  "updated_by": "T-001",
+  "updated_by": "T-002",
 
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
@@ -63,7 +63,7 @@
     "content_owners": { "affects": ["T-130"], "status": "unassigned", "note": "A-3.1's 24 rows carry role owners, not named individuals. T-130 requires a named person and a deputy per row - see risk R9 (bus factor)." }
   },
 
-  "progress": { "done": 1, "total": 77 },
+  "progress": { "done": 2, "total": 77 },
 
   "milestones": [
     { "id": "M0", "title": "Foundation",            "tasks": "T-001..T-005", "done": false },
@@ -81,7 +81,7 @@
 
   "tasks": [
     { "id": "T-001", "m": "M0", "title": "Repo, Next.js, TypeScript, Tailwind", "needs": [], "status": "done" },
-    { "id": "T-002", "m": "M0", "title": "Design tokens & typography (incl. Bangla fonts)", "needs": ["T-001"], "status": "todo" },
+    { "id": "T-002", "m": "M0", "title": "Design tokens & typography (incl. Bangla fonts)", "needs": ["T-001"], "status": "done" },
     { "id": "T-003", "m": "M0", "title": "Env config & secret handling", "needs": ["T-001"], "status": "todo" },
     { "id": "T-004", "m": "M0", "title": "PostgreSQL + Prisma wiring", "needs": ["T-003"], "status": "todo" },
     { "id": "T-005", "m": "M0", "title": "CI skeleton (lint, typecheck, test, secret scan)", "needs": ["T-001"], "status": "todo" },
@@ -197,6 +197,13 @@
       "by": "T-001",
       "result": "Next.js 15.5 App Router scaffold added around the existing documentation set. TypeScript strict (plus noUncheckedIndexedAccess) with the @/ -> src/ alias, Tailwind 3.4, ESLint 8 via .eslintrc (next/core-web-vitals + next/typescript + prettier), Prettier, .gitignore, .editorconfig, and the src/{app,components,lib,i18n,types} skeleton. App boots to a blank page. Two judgement calls, both noted in PENDING-COMMIT.md: PostCSS is configured through the package.json 'postcss' key rather than a postcss.config.js, to stay inside the card's Files list; and src/app/globals.css was created holding only the three Tailwind directives, which T-002 extends with the tokens. Verify: npm run build, tsc --noEmit and eslint clean; dev server returns 200 on /.",
       "next": "T-002"
+    },
+    {
+      "at": "2026-08-14",
+      "task": "T-002",
+      "by": "T-002",
+      "result": "Design tokens and typography. globals.css declares the thirteen A-8.1 colour custom properties verbatim plus the two A-8.2 font stacks; tailwind.config.ts maps them onto primary/ink/accent/teal/khaki/surface/surface-alt/border/success/danger, the four-family heading and body stacks, a clamped H1/H2/H3 scale and the fixed body sizes. Bangla body 17px/1.75 lands both as the text-body-bn utility and as an automatic html:lang(bn) base rule, so it applies without a class and does not shrink on mobile. Base classes per design-system.md §5: btn-primary/secondary/cta, link, link-on-primary, card (+accent bars), input/label/field-error, callout, rule-accent, all built to the contrast rules in §9 (gold never carries text; the gold CTA label is Charcoal Ink; footer link hover is the gold tint). src/lib/fonts.ts holds the TS-side stacks, weights, Bangla sizing constants and the interim Google Fonts URL. Two judgement calls in the report: webfonts load via an @import of the Google Fonts CDN, flagged for T-102 to replace with self-hosted subsets, since the card requires the families to render but forbids subsetting; and verification used a temporary /scratch-t002 route (the card's Files list has no page), deleted before commit, mirroring T-001's probe. Verify: build, tsc --noEmit and eslint clean; dev returns 200 with both headings rendering; the only hex literals under src/ are the thirteen in globals.css.",
+      "next": "T-003"
     }
   ]
 }

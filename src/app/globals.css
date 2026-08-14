@@ -1,6 +1,230 @@
+/* Interim webfont delivery. T-002 must not subset (its Stop line); T-102 owns
+   subsetting, self-hosting and preload and is expected to replace this import
+   with local @font-face rules. Families and weights: src/lib/fonts.ts. */
+@import url("https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600&family=Playfair+Display:wght@600;700&family=Source+Sans+3:wght@400;600&family=Tiro+Bangla&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* T-002 adds the colour tokens, type scale, Bangla body utility and base
-   component classes here. T-001 wires Tailwind only. */
+/* ---------------------------------------------------------------------------
+   Tokens — ARCHITECTURE.md §A-8.1 / §A-8.2, values verbatim from
+   design-system.md §10 and §11.
+
+   This file and tailwind.config.ts are the ONLY places a hex literal may
+   appear. Components use the token names (T-002 Contract).
+   --------------------------------------------------------------------------- */
+:root {
+  --color-primary: #1e4b3a;
+  --color-primary-hover: #2e6b52;
+  --color-ink: #22262a;
+  --color-ink-muted: #5b6470;
+  --color-accent: #b8912f;
+  --color-accent-tint: #f1e4c2;
+  --color-teal: #3a7a72;
+  --color-khaki: #dccfa8;
+  --color-surface: #ffffff;
+  --color-surface-alt: #faf7f0;
+  --color-border: #ede9dd;
+  --color-success: #3e8e5a;
+  --color-danger: #b3413a;
+
+  --font-heading: "Playfair Display", "Tiro Bangla", Georgia, serif;
+  --font-body: "Source Sans 3", "Hind Siliguri", "Segoe UI", sans-serif;
+
+  --shadow-card:
+    0 1px 2px rgb(34 38 42 / 0.04), 0 8px 24px rgb(34 38 42 / 0.06);
+}
+
+@layer base {
+  html {
+    @apply bg-surface font-body text-body text-ink;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* Bangla body floor: 17px / 1.75 (design-system.md §3.4). Bangla is the
+     site's default language, and this size does NOT shrink on mobile. Set on
+     the root so unclassed text inherits it; `text-body-bn` is the explicit
+     utility for anything that opts out of inheritance. `:lang()` rather than
+     `[lang]` so a Bangla fragment inside an English page is covered too. */
+  html:lang(bn) {
+    @apply text-body-bn;
+  }
+
+  body {
+    @apply min-h-screen;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading;
+    text-wrap: balance;
+  }
+
+  /* §3.3. H1 sits on white or on green, so its colour is set per context
+     rather than here. */
+  h1 {
+    @apply text-h1 font-bold;
+  }
+
+  h2 {
+    @apply text-h2 font-semibold text-primary;
+  }
+
+  h3 {
+    @apply text-h3 font-semibold text-ink;
+  }
+
+  small,
+  caption,
+  figcaption {
+    @apply text-caption text-ink-muted;
+  }
+
+  /* Forest Green focus outline, everywhere — §5 Forms, and design-system.md §9
+     forbids relying on colour alone, so it is an outline and not a tint. */
+  :focus-visible {
+    @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-surface;
+  }
+
+  ::selection {
+    @apply bg-accent-tint text-ink;
+  }
+}
+
+@layer components {
+  /* --- Buttons (design-system.md §5) ------------------------------------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-btn px-5 py-2.5
+      text-control font-semibold no-underline transition-colors duration-150;
+    /* No fixed width: Bangla runs 15–30% longer than English (§A-8.3). */
+  }
+
+  /* White on Deep Forest Green — 9.89:1 (§9). */
+  .btn-primary {
+    @apply btn border-rule border-transparent bg-primary text-surface;
+  }
+
+  .btn-primary:hover {
+    /* Gold reads as a decorative rule here, never as the label colour (§2.4). */
+    @apply border-b-accent bg-primary-hover;
+  }
+
+  .btn-secondary {
+    @apply btn border-rule border-primary bg-transparent text-primary;
+  }
+
+  .btn-secondary:hover {
+    @apply bg-primary text-surface;
+  }
+
+  /* The one element allowed in full-saturation gold (§5 Forms). Its label is
+     Charcoal Ink at 5.17:1 — white on gold is 2.95:1 and is not permitted. */
+  .btn-cta {
+    @apply btn border-rule border-transparent bg-accent text-ink;
+  }
+
+  .btn-cta:hover {
+    @apply border-b-primary;
+  }
+
+  .btn:disabled,
+  .btn[aria-disabled="true"] {
+    @apply pointer-events-none opacity-60;
+  }
+
+  /* --- Links (§5) --------------------------------------------------------- */
+  .link {
+    @apply text-teal underline-offset-2 no-underline transition-colors;
+  }
+
+  .link:hover {
+    @apply underline;
+  }
+
+  /* Gold at body size is 3.36:1 on green and fails; the tint is 7.83:1 (§9). */
+  .link-on-primary {
+    @apply text-surface underline-offset-2 no-underline transition-colors;
+  }
+
+  .link-on-primary:hover {
+    @apply text-accent-tint underline;
+  }
+
+  /* --- Cards (§5) --------------------------------------------------------- */
+  .card {
+    @apply overflow-hidden rounded-card border border-border bg-surface p-6
+      shadow-card;
+  }
+
+  /* Thin gold or teal accent bar along the top of a card. */
+  .card-accent {
+    @apply border-t-4 border-t-accent;
+  }
+
+  .card-accent-teal {
+    @apply border-t-4 border-t-teal;
+  }
+
+  /* --- Forms (§5) --------------------------------------------------------- */
+  .label {
+    @apply mb-1.5 block text-control font-semibold text-ink;
+  }
+
+  .input {
+    @apply block w-full rounded-btn border border-border bg-surface px-3.5 py-2.5
+      text-body text-ink transition-colors placeholder:text-ink-muted;
+  }
+
+  html:lang(bn) .input {
+    @apply text-body-bn;
+  }
+
+  .input:hover {
+    @apply border-primary-hover;
+  }
+
+  .input:disabled {
+    @apply cursor-not-allowed bg-surface-alt text-ink-muted;
+  }
+
+  .input[aria-invalid="true"] {
+    @apply border-danger;
+  }
+
+  /* Alert Red is 5.62:1 on white (§9), but colour never carries the message
+     alone — callers pair this with an icon or the word itself. */
+  .field-error {
+    @apply mt-1.5 text-caption text-danger;
+  }
+
+  .field-hint {
+    @apply mt-1.5 text-caption text-ink-muted;
+  }
+
+  /* Confirmation text is Charcoal Ink; Success Green is 4.02:1 and is limited
+     to the icon, border and fill (§2.6, §9). */
+  .field-success {
+    @apply mt-1.5 text-caption text-ink;
+  }
+
+  /* --- Callout / quote block (§2.4) --------------------------------------- */
+  .callout {
+    @apply rounded-card border-l-4 border-l-accent bg-accent-tint px-5 py-4
+      text-ink;
+  }
+
+  /* --- Surfaces ----------------------------------------------------------- */
+  .section-alt {
+    @apply bg-surface-alt;
+  }
+
+  /* A thin gold rule — the signature detail, decorative by definition. */
+  .rule-accent {
+    @apply border-0 border-t-rule border-t-accent;
+  }
+}

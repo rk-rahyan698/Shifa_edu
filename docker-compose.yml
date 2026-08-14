@@ -1,0 +1,40 @@
+# Local development database only. Staging and production are provisioned in
+# T-123 and never from this file.
+#
+# Start:  docker compose up -d
+# Logs:   docker compose logs -f postgres
+# Wipe:   docker compose down -v      (drops the volume — data is not precious here)
+#
+# Credentials below are local-only development defaults and are deliberately
+# non-secret: ARCHITECTURE.md §A-12 keeps real credentials in the environment.
+# DATABASE_URL must match them, e.g.
+#   postgresql://shifa:shifa@localhost:5432/shifa_dev?schema=public
+#
+# Put DATABASE_URL in `.env`, not `.env.local`: the Prisma CLI reads only
+# `.env`, while Next.js reads both. Either file is gitignored.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: shifa_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shifa
+      POSTGRES_PASSWORD: shifa
+      POSTGRES_DB: shifa_dev
+      # Deterministic collation, so ORDER BY behaves the same on every machine
+      # and in CI. Bangla text sorts by code point rather than by a locale the
+      # host happens to carry.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U shifa -d shifa_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

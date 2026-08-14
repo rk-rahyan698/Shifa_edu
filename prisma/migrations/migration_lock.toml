@@ -1,0 +1,3 @@
+# Committed so every environment applies these migrations against the same
+# database engine. Do not edit or remove.
+provider = "postgresql"

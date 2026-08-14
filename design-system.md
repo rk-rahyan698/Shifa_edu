@@ -1,6 +1,6 @@
 # Shifa International School — Website Design System
 
-**Version 1.0** | Prepared for website redesign & future social media use
+**Version 1.1** | Prepared for website redesign & future social media use. v1.1 adds the Bangla typography pairing (§3.4) and its accessibility/subsetting notes (§9) — Bangla is the site's default language and the original palette/type research below named no Bangla typeface.
 
 ---
 
@@ -92,6 +92,28 @@ International school sites researched (Benjamin Franklin International School, S
 
 Mobile scale: reduce H1 to 32–36px, H2 to 26px, body stays 16px for readability.
 
+### 3.4 Bangla Typography Pairing
+
+Bangla is this site's **default** language, but Playfair Display and Source Sans 3 have **zero Bangla glyph coverage** — without a paired Bangla family, every Bangla page falls back to whatever the OS supplies. The pairing below matches each Latin family's tone:
+
+| Role | Latin | Bangla | Notes |
+|---|---|---|---|
+| Headings | Playfair Display, 600–700 | **Tiro Bangla** (or Noto Serif Bengali) | Serif↔serif — keeps the same formal tone |
+| Body | Source Sans 3, 400/600 | **Hind Siliguri** (or Noto Sans Bengali) | High legibility at small sizes |
+
+Script-based fallback in a single stack, because Bangla/Latin mixed strings are unavoidable (school name, "EIIN 311011906", "Class 10"):
+
+```css
+--font-heading: "Playfair Display", "Tiro Bangla", Georgia, serif;
+--font-body:    "Source Sans 3", "Hind Siliguri", "Segoe UI", sans-serif;
+```
+
+**Bangla-specific adjustments** (the *matra* and conjunct density reduce legibility at sizes that read fine in Latin):
+- Body text minimum **17px** in Bangla (vs 16px Latin).
+- Line-height **1.75** in Bangla (vs 1.6 Latin) — clears ascenders/descenders.
+- **Subset the Bangla webfonts** to the actual glyph range and preload only the body weight — unsubsetted Bangla families commonly exceed 300KB each, which would dominate the page's font budget on the majority-language experience.
+- Every component is built to **Bangla string length first, then verified in English** — Bangla runs roughly 15–30% longer than the equivalent English, so no fixed-width buttons, no single-line-assumed nav items, no truncation without a `title` attribute.
+
 ---
 
 ## 4. Logo Usage
@@ -162,6 +184,7 @@ When this palette is later extended to social media:
 - White text on Deep Forest Green (`#1E4B3A`) — contrast ratio ~8.4:1 (AAA)
 - Gold (`#B8912F`) on White — ~3.3:1 — use only for large text (18px+/bold) or icons, not small body copy
 - Always pair color with an icon, underline, or label for critical actions/errors — never rely on color alone
+- **Re-verify these ratios against actual Bangla renderings, not just Latin.** Bangla's heavier stroke weight and the *matra* (top bar) mean a contrast ratio that reads fine in Latin can read muddy in Bangla at the same size — this is why Bangla body text has its own 17px minimum (§3.4). Muted Gold's large-text-only restriction applies equally to Bangla.
 
 ---
 
@@ -188,10 +211,12 @@ Alert Red           #B3413A   — errors/warnings
 ## 11. Fonts — Quick Reference
 
 ```
-Headings:  "Playfair Display", Georgia, serif
-Body:      "Source Sans 3", "Segoe UI", sans-serif
-(Google Fonts import: Playfair Display, Source Sans 3)
+Headings:  "Playfair Display", "Tiro Bangla", Georgia, serif
+Body:      "Source Sans 3", "Hind Siliguri", "Segoe UI", sans-serif
+(Google Fonts import: Playfair Display, Source Sans 3, Tiro Bangla, Hind Siliguri)
 ```
+
+See §3.4 for the full rationale, per-script stack, and Bangla-specific sizing rules.
 
 ---
 

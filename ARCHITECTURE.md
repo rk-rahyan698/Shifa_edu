@@ -5,9 +5,7 @@
 **Domain:** shifaintschool.com
 **Status:** Authoritative for technical implementation
 
-> **Document precedence.** This document supersedes `PRD.md` §5 (database schema), §6.3–6.4 (permission model), and §10.1–10.2 (design tokens). `PRD.md` remains authoritative for product scope (§1, §7, §8). `design-system.md` is authoritative for visual design. `school-website-spec-final.md` is authoritative for business intent. `site_map.md` is authoritative for page inventory, with the corrections in ADR-005 and ADR-006.
->
-> **Read `AUDIT.md` first** — it explains why several things here differ from the PRD.
+> **Document precedence.** This document is authoritative for system architecture and database design (Parts A and B) — it is the single technical source of truth. `PRODUCT-SPEC.md` is authoritative for product-level detail: page-by-page UI specs, admin screen specs, the API surface, tech stack, and reference/seed data — it assumes every decision made here. `design-system.md` is authoritative for visual design (palette, typography, components). `school-website-spec-final.md` is the original Bangla-language requirements document, kept for business intent and historical context; where it conflicts with this file or `PRODUCT-SPEC.md`, those two win.
 
 > ### 🧭 Building from this document? Do not read it front to back.
 >
@@ -17,7 +15,9 @@
 > |---|---|
 > | **[`build-state.json`](build-state.json)** | **Start here, every session.** ~10KB. Holds the status of all 78 tasks, the resume protocol, and the global stop rules. It is the only place status lives. |
 > | **[`BUILD-TRACKER.md`](BUILD-TRACKER.md)** | The task catalogue. One card per task: what to load from this file, where to start, what to touch, **where to stop**, and how to verify. |
-> | **This file** | Read only the sections a task card's `Load` line names. |
+> | **This file** | Read only the sections a task card's `Load` line names — system architecture and database design. |
+> | **[`PRODUCT-SPEC.md`](PRODUCT-SPEC.md)** | Page-by-page UI specs, admin screen specs, API reference, tech stack, and reference data — read when a task card's `Load` line points here. |
+> | **[`design-system.md`](design-system.md)** | Visual tokens and components — read when a task card's `Load` line points here. |
 >
 > **To resume work, the entire prompt is:**
 > `Read build-state.json and follow its read_order_for_ai. Do exactly one task, then stop.`
@@ -477,11 +477,11 @@ Adding Arabic: `INSERT INTO locales`, add `ar.json`, add `dir="rtl"` handling. *
 
 ## A-8. Design System Integration
 
-> `design-system.md` is authoritative. `PRD.md` §10.1–10.2 is superseded (AUDIT B-4).
+> `design-system.md` is authoritative for **all** visual design — palette, typography (including the Bangla pairing that closes AUDIT B-4), components, imagery, iconography, and accessibility contrast. Read it before building any UI; nothing here repeats it. This section covers only the technical integration: how those tokens get wired into code, and the one layout-testing rule that follows from them.
 
-### A-8.1 Tokens
+### A-8.1 Tokens → CSS custom properties
 
-All values come from `design-system.md` §10 and are declared once as CSS custom properties, then mapped into Tailwind — no hex literal ever appears in a component.
+Declared once, mapped into Tailwind — no hex literal ever appears in a component. Values are `design-system.md` §10's Quick Reference, verbatim:
 
 ```css
 :root{
@@ -494,31 +494,20 @@ All values come from `design-system.md` §10 and are declared once as CSS custom
 }
 ```
 
-### A-8.2 Typography — the Bangla gap closed
+### A-8.2 Fonts → CSS custom properties
 
-`design-system.md` names no Bangla typeface, yet Bangla is the default language (AUDIT B-4). Playfair Display and Source Sans 3 have **zero Bangla coverage**. Pairing added:
-
-| Role | Latin | Bangla | Notes |
-|---|---|---|---|
-| Headings | Playfair Display 600–700 | **Tiro Bangla** (or Noto Serif Bengali) | Serif↔serif; matches the formal tone |
-| Body | Source Sans 3 400/600 | **Hind Siliguri** (or Noto Sans Bengali) | High legibility at small sizes |
+Family stacks, including the Bangla pairing, are `design-system.md` §3.4 / §11:
 
 ```css
 --font-heading: "Playfair Display","Tiro Bangla",Georgia,serif;
 --font-body:    "Source Sans 3","Hind Siliguri","Segoe UI",sans-serif;
 ```
 
-Script-based fallback in one stack, because BN/EN mix inside single strings is unavoidable ("Class 10", "EIIN 311011906", the school name).
+Font payload budget (≤200KB, §A-2 Efficient) depends on Bangla subsetting — see `design-system.md` §3.4 for the subsetting rule.
 
-**Bangla-specific rules:**
-- Body minimum **17px** in Bangla (vs 16px Latin) — the *matra* and conjunct density reduce legibility at equal size.
-- Line-height 1.75 in Bangla (vs 1.6) to clear ascenders/descenders.
-- **Subset Bangla webfonts** to the actual glyph range and preload only the body weight — unsubsetted Bangla families exceed 300 KB each and would blow the ≤200 KB font budget on the majority-language experience.
-- Re-verify `design-system.md` §9 contrast ratios against Bangla renderings; Muted Gold on white already fails small-text AA and must remain icons/large-text only.
+### A-8.3 Bangla-vs-English layout testing rule
 
-### A-8.3 Layout accommodation
-
-Bangla runs roughly 15–30% longer than equivalent English. Every component is built to the **Bangla** string length, then verified in English — never the reverse. No fixed-width buttons, no single-line-assumed nav items, no truncation without a title attribute.
+Bangla runs roughly 15–30% longer than equivalent English (`design-system.md` §3.4). Every component is **built to the Bangla string length, then verified in English** — never the reverse. No fixed-width buttons, no single-line-assumed nav items, no truncation without a `title` attribute. This is a build/test discipline, not a design token, which is why it lives here rather than in `design-system.md`.
 
 ---
 
@@ -2309,7 +2298,7 @@ The SQL above is authoritative. Prisma is a client over it, mapped with `@@map` 
 6. `class_grades` (14, Pre-Play → Class 10) + translations, `ON CONFLICT (code) DO NOTHING`
 7. Singletons: `site_branding`, `site_settings`, `home_content`, `about_content`, `academic_info` — one row each, `id = 1`
 8. `pages` + `page_translations` — placeholder meta per page per locale
-9. `features` — the six from PRD §14.4 (these are safe: they describe facilities, not unverifiable claims)
+9. `features` — the six in `PRODUCT-SPEC.md` §P-2 (these are safe: they describe facilities, not unverifiable claims)
 
 ### What seed must **not** create
 
@@ -2404,4 +2393,4 @@ The four source documents did the hard part — they know what this school needs
 
 ---
 
-*Companion documents: `AUDIT.md` (problems and solutions) · `PRD.md` §1/§7/§8 (product scope) · `design-system.md` (visual design) · `school-website-spec-final.md` (business intent).*
+*Companion documents: `PRODUCT-SPEC.md` (page-by-page specs, admin UI, API reference, tech stack) · `design-system.md` (visual design) · `school-website-spec-final.md` (original business intent).*

@@ -24,7 +24,7 @@
     "If a task cannot be completed as written, set status 'blocked', fill blocked_reason, add to blocked_on, and STOP.",
     "If the work would need files outside the card's Files list, STOP and report scope drift instead of expanding.",
     "Every completed task = one commit, message 'T-0XX: <title>'.",
-    "PRD.md sections 5, 6.3, 6.4, 10.1 and 10.2 are SUPERSEDED. Never build from them."
+    "PRODUCT-SPEC.md assumes every decision in ARCHITECTURE.md Parts A/B. If a task's Load line names both and they disagree, ARCHITECTURE.md wins."
   ],
 
   "phase_gates": {

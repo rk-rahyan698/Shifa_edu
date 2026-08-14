@@ -1,5 +1,7 @@
 # স্কুল ওয়েবসাইট — পেজ কনটেন্ট গাইড ও অ্যাডমিন প্যানেল স্পেসিফিকেশন
 
+> **Status.** This is the original Bangla-language requirements document — kept as the record of *business intent* (what the school asked for and why). It is **not** current technical guidance: `ARCHITECTURE.md` (system architecture + database design) and `design-system.md` (visual design) are authoritative for all technical decisions, and `PRODUCT-SPEC.md` is authoritative for current page-by-page UI specs, admin screens, and the API surface. Where this document's permission model, page structure, or design ideas differ from those three — e.g. the permission matrix below is the model `ARCHITECTURE.md` §A-9.3 actually kept, but the page/admin route structure was revised (see `ARCHITECTURE.md`'s ADR table) — the newer documents win. The unfinished "next step" at the end of this document (going page-by-page to collect the school's real content) is now tracked, with named owners, as the Content Collection Checklist in `ARCHITECTURE.md` §A-3.1.
+>
 > এই ডকুমেন্টটা দুই ভাগে সাজানো:
 > **অংশ ১** — প্রতিটা পাবলিক পেজে কী কী তথ্য থাকবে (ফাঁকা জায়গায় নিজের স্কুলের তথ্য বসাও)
 > **অংশ ২** — Super Admin ও Admin কীভাবে এই সব কনটেন্ট নিয়ন্ত্রণ করবে

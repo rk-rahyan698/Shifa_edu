@@ -49,7 +49,7 @@ ARCHITECTURE.md  ──▶ read ONLY the sections in the card's **Load** line
 2. **Never edit a `done` task's output.** Add a new task id; mark the old one `superseded`.
 3. **Never originate a fact about the school.** See `ARCHITECTURE.md` §A-3.1. Use `[[CONTENT REQUIRED — DO NOT PUBLISH]]`.
 4. **Scope drift = stop.** If the work needs a file outside **Files**, stop and report rather than expanding.
-5. **`PRD.md` §5, §6.3, §6.4, §10.1, §10.2 are superseded.** Never build from them.
+5. **`PRODUCT-SPEC.md` assumes every decision in `ARCHITECTURE.md` Parts A/B.** If a task card's `Load` line names both, `ARCHITECTURE.md` wins on anything they disagree about.
 6. One completed task = one commit, `T-0XX: <title>`.
 
 ---
@@ -492,7 +492,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 #### T-050 · Admin layout & permission-filtered sidebar
 **Needs** T-041, T-031, T-030 · **Unlocks** T-051
-**Load** `ARCHITECTURE.md` §A-5.2, §A-9.3 · `PRD.md` §8.1 (layout sketch only)
+**Load** `ARCHITECTURE.md` §A-5.2, §A-9.3 · `PRODUCT-SPEC.md` §P-7.1 (layout sketch only)
 **Start** T-041 done.
 **Do** Admin shell: header (user, role, locale toggle, logout), sidebar rendered from the module registry filtered by `view` permission, mobile drawer, breadcrumbs. **Bilingual** via the `admin` i18n namespace (ADR-007).
 **Files** `src/app/admin/layout.tsx`, `src/components/admin/{AdminHeader,AdminSidebar}.tsx`
@@ -516,7 +516,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 #### T-052 · Admin dashboard
 **Needs** T-051 · **Unlocks** —
-**Load** `ARCHITECTURE.md` §A-15 (freshness row) · `PRD.md` §8.2
+**Load** `ARCHITECTURE.md` §A-15 (freshness row) · `PRODUCT-SPEC.md` §P-7.2
 **Start** T-051 done.
 **Do** Stat cards (teachers, published notices, unread messages, gallery items), last 10 `activity_logs` entries, quick actions **filtered by permission**, and a content-freshness panel (stale notices, unread messages > 7 days, sections still holding placeholders).
 **Files** `src/app/admin/page.tsx`, `src/components/admin/Dashboard*.tsx`
@@ -659,7 +659,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-081 · Public: Home
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-10, §B-17 (homepage row) · `PRD.md` §7.2
+**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-10, §B-17 (homepage row) · `PRODUCT-SPEC.md` §P-6.2
 **Do** Hero slider · school at a glance · **stats bar (renders only verified stats)** · latest 5 notices · features · gallery preview (6) · CTA banner.
 **Files** `src/app/(public)/[[...locale]]/page.tsx`, `src/components/public/{HeroSlider,StatsBar,FeatureGrid}.tsx`
 **Contract** Any section whose content is empty or placeholder-marked **does not render**. No empty shells.
@@ -668,7 +668,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-082 · Public: About
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-10, §B-6 · `PRD.md` §7.3
+**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-10, §B-6 · `PRODUCT-SPEC.md` §P-6.3
 **Do** History · vision · mission · principal's message · registration ids · committee (consented only) · achievements · curriculum highlights.
 **Files** `src/app/(public)/[[...locale]]/about/page.tsx`
 **Contract** Committee members without consent are omitted silently.
@@ -677,7 +677,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-083 · Public: Academics + sub-pages
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-8 · `PRD.md` §7.4
+**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-8 · `PRODUCT-SPEC.md` §P-6.4
 **Do** `/academics` (class structure by stage, curriculum, subjects accordion, timing, assessment) plus `/academics/routines`, `/academics/calendar`, `/academics/exams`. All four in both locales.
 **Files** `src/app/(public)/[[...locale]]/academics/**`
 **Contract** Everything scoped to the **current** academic year, with the year shown so parents know what they are reading.
@@ -686,7 +686,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-084 · Public: Admission
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-9 · `PRD.md` §7.5
+**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-9 · `PRODUCT-SPEC.md` §P-6.5
 **Do** Status banner (open/closed styling) · process stepper · eligibility table · important dates · required documents · **fee table with ৳** · form download · FAQ accordion.
 **Files** `src/app/(public)/[[...locale]]/admission/page.tsx`
 **Contract** The banner shows "open" **only** when `admission_cycles.is_open` is true and within dates. Never a hardcoded string.
@@ -695,7 +695,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-085 · Public: Faculty
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-7, §A-16.2 · `PRD.md` §7.6
+**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-7, §A-16.2 · `PRODUCT-SPEC.md` §P-6.6
 **Do** Card grid of published, consented faculty: photo (or initials placeholder), name, designation, subjects, qualification, optional experience and bio.
 **Files** `src/app/(public)/[[...locale]]/faculty/page.tsx`, `src/components/public/FacultyCard.tsx`
 **Contract** The query **must not** touch `faculty_private`. T-113 enforces this in CI.
@@ -704,7 +704,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-086 · Public: Notices list + detail
-**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-11, §B-17 · `PRD.md` §7.7
+**Needs** T-080 · **Load** `ARCHITECTURE.md` §B-11, §B-17 · `PRODUCT-SPEC.md` §P-6.7
 **Do** `/notices` paginated (10/page), category filter via query param, pinned first. `/notices/[slug]` with body, category, date, multiple attachment downloads, WhatsApp/Facebook share, back link.
 **Files** `src/app/(public)/[[...locale]]/notices/**`
 **Contract** Visibility is exactly `status='published' AND published_at <= now() AND deleted_at IS NULL`. A future-dated notice must not appear.
@@ -722,7 +722,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-088 · Public: Contact + inquiry form
-**Needs** T-080, T-033 · **Load** `ARCHITECTURE.md` §A-16.2, §B-13 · `PRD.md` §7.9
+**Needs** T-080, T-033 · **Load** `ARCHITECTURE.md` §A-16.2, §B-13 · `PRODUCT-SPEC.md` §P-6.9
 **Do** Contact cards from `contact_channels`, office hours, map embed, and the inquiry form (name, phone, email optional, message) with validation, rate limiting, **explicit consent text beside submit**, hashed IP, success toast.
 **Files** `src/app/(public)/[[...locale]]/contact/page.tsx`, `src/app/api/contact/route.ts`
 **Contract** The consent line states what is collected, why, and the 12-month retention, and links to the privacy policy.
@@ -753,7 +753,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 
 #### T-100 · SEO
 **Needs** all M6 page tasks · **Unlocks** T-103
-**Load** `ARCHITECTURE.md` §A-7.1, §B-6 (pages/page_translations) · `PRD.md` §11.2
+**Load** `ARCHITECTURE.md` §A-7.1, §B-6 (pages/page_translations) · `PRODUCT-SPEC.md` §P-9
 **Do** Per-page metadata from `page_translations`, `hreflang` alternates **to distinct URLs** plus `x-default`, canonical, Open Graph, JSON-LD `EducationalOrganization`, `sitemap.xml` (both locales, English entries only where translated), `robots.txt` disallowing `/admin`.
 **Files** `src/app/sitemap.ts`, `src/app/robots.ts`, `src/lib/seo.ts`, metadata exports per page
 **Contract** `hreflang` never points two locales at one URL — that was the defect in AUDIT B-3.

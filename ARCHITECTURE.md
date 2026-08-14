@@ -352,19 +352,27 @@ Each module is a permission unit, a sidebar entry, a set of tables, and a set of
 
 | Module code | Owns tables | Revalidates | Applicable actions |
 |---|---|---|---|
-| `site_settings` | site_settings·registrations·contact_channels·social_links·site_stats | all paths | view, edit |
+| `site_settings` | site_settings, school_registration_ids, contact_channels, social_links, site_stats, pages, `<lookup tables §B-3>` — see †, ‡ | all paths | view, edit |
 | `home` | hero_slides, home_content, features | `/`, `/en` | view, edit |
 | `about` | about_content, committee_members, achievements | `/about`, `/en/about` | view, edit |
-| `academics` | academic_years, class_*, subjects, routines, calendar, exams | `/academics/**` | view, add, edit, delete |
+| `academics` | academic_years, academic_info, class_grades, class_sections, class_subjects, class_routines, subjects, exam_terms, exams, calendar_events | `/academics/**` | view, add, edit, delete |
 | `admission` | admission_*, fee_structures, fee_items | `/admission`, `/en/admission` | view, add, edit, delete |
-| `faculty` | faculty, faculty_translations, faculty_private, faculty_subjects | `/faculty`, `/en/faculty` | view, add, edit, delete |
-| `notice` | notices, notice_translations, notice_attachments | `/notices/**`, `/` | view, add, edit, delete, **publish** |
+| `faculty` | faculty, faculty_subjects, faculty_class_assignments — see § | `/faculty`, `/en/faculty` | view, add, edit, delete |
+| `notice` | notices, notice_attachments | `/notices/**`, `/` | view, add, edit, delete, **publish** |
 | `gallery` | gallery_albums, gallery_photos, gallery_videos | `/gallery`, `/` | view, add, edit, delete |
 | `contact` | contact_messages | — | view, delete |
-| `media` | media_assets | — | view, add, delete |
-| `users` | users, permissions, grants | — | **Super Admin only** |
+| `media` | media_assets, media_variants | — | view, add, delete |
+| `users` | users, user_module_permissions, user_special_grants, sessions, password_reset_tokens, login_attempts, rate_limit_counters | — | **Super Admin only** |
+
+**Reading the "Owns tables" column.** Each row lists the module's **base** tables. A `*_translations` table is owned by the same module as its base table and is not listed separately. Reference and lookup tables (§B-3) are covered by the `site_settings` module — see the note below. `activity_logs` is append-only and owned by no module: nothing may edit it (§A-11 / ADR-011). `site_branding` and `faculty_private` are deliberately unowned — see their footnotes.
 
 > `site_branding` is deliberately not owned by any module. It is gated by the `edit_branding` special grant — see §A-9.4.
+
+> **§** `faculty_private` is deliberately not owned by the `faculty` module. Personal contact data is Super Admin only (§A-16.1); `faculty:edit` grants the public profile and its translations, never the private record. See T-065's Contract.
+
+> **†** The §B-3 reference and lookup tables are site-wide configuration, so the `site_settings` module owns them — `notice_categories`, `gallery_categories`, `calendar_event_types`, `fee_types`, `designations`, `class_stages`, `registration_id_types`, `contact_channel_types`, `social_platforms`, `video_providers`, `content_statuses`, `contact_message_statuses` and their translations. This is what makes ADR-002 real: adding a notice category is an INSERT performed by an admin holding `site_settings:edit`, not a migration. **Excluded:** `locales`, `roles`, `modules`, `permission_actions`, `module_actions` and `special_grants` are *system* lookups — structural, not content. They are seeded (§B-19) and are not editable through the admin UI in Phase 1.
+
+> **‡** `pages` / `page_translations` hold per-page SEO metadata (§B-6). They sit in `site_settings` because SEO metadata is site-wide configuration and that module already revalidates all paths. T-100 is their writer.
 
 > Note `publish` as a distinct action on `notice`. This is the mechanism for AUDIT E3-8 (no unreviewed content reaching the public site): a junior admin can be granted `add`+`edit` but not `publish`.
 

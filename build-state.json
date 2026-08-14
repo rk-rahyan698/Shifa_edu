@@ -55,7 +55,7 @@
     }
   },
 
-  "blocked_on": ["T-004"],
+  "blocked_on": [],
 
   "open_decisions_required_before": {
     "ADR-005_url_change": { "affects": ["T-030", "T-080"], "status": "decided_in_architecture", "note": "Bangla is unprefixed (/notices), English is /en-prefixed (/en/notices). Reverse only by a new ADR." },
@@ -63,7 +63,7 @@
     "content_owners": { "affects": ["T-130"], "status": "unassigned", "note": "A-3.1's 24 rows carry role owners, not named individuals. T-130 requires a named person and a deputy per row - see risk R9 (bus factor)." }
   },
 
-  "progress": { "done": 3, "total": 77 },
+  "progress": { "done": 4, "total": 77 },
 
   "milestones": [
     { "id": "M0", "title": "Foundation",            "tasks": "T-001..T-005", "done": false },
@@ -83,7 +83,7 @@
     { "id": "T-001", "m": "M0", "title": "Repo, Next.js, TypeScript, Tailwind", "needs": [], "status": "done" },
     { "id": "T-002", "m": "M0", "title": "Design tokens & typography (incl. Bangla fonts)", "needs": ["T-001"], "status": "done" },
     { "id": "T-003", "m": "M0", "title": "Env config & secret handling", "needs": ["T-001"], "status": "done" },
-    { "id": "T-004", "m": "M0", "title": "PostgreSQL + Prisma wiring", "needs": ["T-003"], "status": "blocked", "blocked_reason": "All five artifacts are written and every check that does not need a server passes, but the card's Stop and Verify lines require a running PostgreSQL 16 and this machine cannot start one: docker and docker compose are not installed, no postgres service or client exists, nothing listens on 5432, and WSL is not installed. `npm run db:migrate` was run and fails at P1001 (cannot reach localhost:5432), so the migration has never been applied and neither SELECT has ever run. The user has chosen to install Docker Desktop. To unblock: install Docker Desktop, `docker compose up -d`, put DATABASE_URL=postgresql://shifa:shifa@localhost:5432/shifa_dev?schema=public in .env (the Prisma CLI reads .env, not .env.local), `npm run db:migrate`, then `SELECT gen_random_uuid();` and `SELECT 'A'::citext = 'a';`. If both pass, set this task to done and clear blocked_on. Any reachable PostgreSQL 16 works - the compose file is a convenience, not a dependency." },
+    { "id": "T-004", "m": "M0", "title": "PostgreSQL + Prisma wiring", "needs": ["T-003"], "status": "done" },
     { "id": "T-005", "m": "M0", "title": "CI skeleton (lint, typecheck, test, secret scan)", "needs": ["T-001"], "status": "todo" },
 
     { "id": "T-010", "m": "M1", "title": "Migration: reference & lookup tables", "needs": ["T-004"], "status": "todo" },
@@ -218,6 +218,13 @@
       "by": "T-004",
       "result": "PostgreSQL + Prisma wiring, built but NOT verified - status blocked, see blocked_reason. Written: docker-compose.yml (postgres:16-alpine, pg_isready healthcheck, named volume, initdb --encoding=UTF8 --locale=C so ORDER BY is deterministic across machines and CI, local-only non-secret credentials, and a note that the Prisma CLI reads .env while Next.js reads both .env and .env.local); prisma/schema.prisma with datasource + generator only - no models, and no enums, since lookup tables stay lookup tables per B-18/ADR-002; prisma/migrations/0001_extensions/migration.sql creating pgcrypto and citext with IF NOT EXISTS and no tables; src/lib/prisma.ts exporting the one client, cached on globalThis so dev hot-reload does not open a connection pool per edit, log set to error-only in production because query text can carry personal data (A-12); package.json gains db:migrate (migrate deploy), db:reset (migrate reset --force) and db:studio. prisma and @prisma/client 6.19.3 installed. Judgement call in the report: prisma/migrations/migration_lock.toml was added although the card's Files list does not name it - it is the standard companion of a committed migrations directory and pins the provider. Verified: prisma validate passes, prisma generate succeeds, tsc --noEmit, eslint and next build clean. Not verified: npm run db:migrate fails at P1001 (cannot reach localhost:5432), so the extensions migration has never been applied and neither the gen_random_uuid() nor the citext SELECT has ever run. The user chose to install Docker Desktop rather than have this session download a portable Postgres, so the DB half of Verify is theirs to finish.",
       "next": "T-004 (blocked — start Postgres, run npm run db:migrate and the two SELECTs, then set T-004 to done and clear blocked_on)"
+    },
+    {
+      "at": "2026-08-14",
+      "task": "T-004",
+      "by": "T-004-unblock",
+      "result": "T-004 unblocked and finished. No source artifact changed - all five files were already written and correct from the previous session; only the server half of Verify was outstanding. The user supplied a native Windows PostgreSQL service (postgresql-x64-18, running, listening on 5432) with database shifa_dev already created, so Docker was never needed. Created .env (gitignored, untracked, never committed) holding DATABASE_URL only, because the Prisma CLI reads .env and not .env.local; its header points the remaining keys at .env.local as their tasks land. Stop satisfied: `npm run db:migrate` applied 0001_extensions cleanly and `\\dt` shows only _prisma_migrations - no schema tables. Verify satisfied: `SELECT gen_random_uuid()` returned a v4 UUID and `SELECT 'A'::citext = 'a'` returned t; `\\dx` lists pgcrypto 1.4 and citext 1.8 in public. Re-ran the rest green: prisma validate, prisma generate, tsc --noEmit, eslint, next build. Two facts worth carrying forward. First, the actual engine is PostgreSQL 18.6, while the card says PG 16 and docker-compose.yml still pins postgres:16-alpine - left as written since the card is authoritative, but local dev and the compose/CI target are now different majors and T-005/T-123 should pin one version across both. Second, this database was initialised by the Windows installer under its own locale, not the compose file's --locale=C, so ORDER BY on text may not collate identically to a compose-provisioned or CI database; T-111 is where that would surface.",
+      "next": "T-005"
     }
   ]
 }

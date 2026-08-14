@@ -57,12 +57,12 @@
   "blocked_on": [],
 
   "open_decisions_required_before": {
-    "ADR-005_url_change": { "affects": ["T-030", "T-080"], "status": "decided_in_architecture", "note": "Locale-prefixed URLs. Reverse only by a new ADR." },
-    "ADR-007_admin_language": { "affects": ["T-030", "T-050"], "status": "assumed_bilingual", "note": "Confirm with school office staff. If English-only is confirmed, mark T-030 admin namespace optional." },
-    "content_owners": { "affects": ["T-130"], "status": "unassigned", "note": "ARCHITECTURE.md A-3.1 has 24 rows with no named owner yet." }
+    "ADR-005_url_change": { "affects": ["T-030", "T-080"], "status": "decided_in_architecture", "note": "Bangla is unprefixed (/notices), English is /en-prefixed (/en/notices). Reverse only by a new ADR." },
+    "ADR-007_admin_language": { "affects": ["T-030", "T-050"], "status": "decided_in_architecture", "note": "Bilingual admin, per ARCHITECTURE A-18 ADR-007. Reverse only by a new ADR." },
+    "content_owners": { "affects": ["T-130"], "status": "unassigned", "note": "A-3.1's 24 rows carry role owners, not named individuals. T-130 requires a named person and a deputy per row - see risk R9 (bus factor)." }
   },
 
-  "progress": { "done": 0, "total": 78 },
+  "progress": { "done": 0, "total": 77 },
 
   "milestones": [
     { "id": "M0", "title": "Foundation",            "tasks": "T-001..T-005", "done": false },

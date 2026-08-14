@@ -40,7 +40,7 @@ This is a deepened, desaturated version of the logo's kelly green — profession
 ### 2.4 Accent Color
 | Name | Hex | Usage |
 |---|---|---|
-| **Muted Gold** | `#B8912F` | Small accents only: underlines, icons, "Apply Now" highlight, awards/badges. A formal, muted descendant of the logo's bright yellow lettering |
+| **Muted Gold** | `#B8912F` | **Decorative only on light backgrounds:** underlines, rules, borders, background fills. At 2.95:1 on white (§9) it may not carry text or convey meaning at any size, and may not be the lone colour of a meaningful icon — any text or icon sitting *on* white must be Charcoal Ink or Deep Forest Green. A formal, muted descendant of the logo's bright yellow lettering |
 | **Gold — Light Tint** | `#F1E4C2` | Very light background tint for callout boxes, quote blocks |
 
 ### 2.5 Supporting Accent (from Uniform)
@@ -52,7 +52,7 @@ This is a deepened, desaturated version of the logo's kelly green — profession
 ### 2.6 Functional Colors
 | Name | Hex | Usage |
 |---|---|---|
-| **Success Green** | `#3E8E5A` | Form confirmations, success states |
+| **Success Green** | `#3E8E5A` | Form confirmations, success states — **icons, borders and fills only.** At 4.02:1 on white (§9) it fails AA for body text, so confirmation *text* is set in Charcoal Ink. The hex is deliberately unchanged |
 | **Alert Red** | `#B3413A` | Errors, required-field warnings (muted brick red, not the loud red common in school sites) |
 
 ### Color Ratio Guideline (60-30-10 rule)
@@ -90,7 +90,7 @@ International school sites researched (Benjamin Franklin International School, S
 | Small / Caption | Source Sans 3 | 13–14px | 400 | Slate Gray |
 | Button / Nav | Source Sans 3 | 15–16px | 600 | varies |
 
-Mobile scale: reduce H1 to 32–36px, H2 to 26px, body stays 16px for readability.
+Mobile scale: reduce H1 to 32–36px, H2 to 26px. Body size is **script-dependent and does not shrink on mobile** — Latin body stays at 16px, Bangla body stays at its 17px minimum with line-height 1.75, on mobile exactly as on desktop. Bangla is the site's default language, so this is the default mobile experience; see §3.4.
 
 ### 3.4 Bangla Typography Pairing
 
@@ -143,12 +143,12 @@ Script-based fallback in a single stack, because Bangla/Latin mixed strings are 
 - Rounded corners (8–12px), generous padding
 
 ### Footer
-- Deep Forest Green background, white/cream text, gold accent for links on hover
+- Deep Forest Green background, white/cream text, **Gold Light Tint `#F1E4C2` for links on hover (7.83:1)** — full-saturation Muted Gold on this background is only 3.36:1 and fails for body-size links (§9)
 - Uniform Khaki used only as a subtle texture/pattern (very low opacity) if desired — never solid
 
 ### Forms (Admissions/Contact)
 - White background, Charcoal labels, Forest Green focus outline
-- Primary CTA button in Gold to draw attention to submission (only element allowed in full-saturation gold)
+- Primary CTA button in Gold to draw attention to submission (only element allowed in full-saturation gold) — its label is **Charcoal Ink `#22262A` (5.17:1)**. White-on-gold is 2.95:1 and is not permitted (§9)
 
 ---
 
@@ -180,11 +180,26 @@ When this palette is later extended to social media:
 
 ## 9. Accessibility
 
-- Charcoal Ink (`#22262A`) on White (`#FFFFFF`) — contrast ratio ~15.8:1 (AAA)
-- White text on Deep Forest Green (`#1E4B3A`) — contrast ratio ~8.4:1 (AAA)
-- Gold (`#B8912F`) on White — ~3.3:1 — use only for large text (18px+/bold) or icons, not small body copy
+Measured on sRGB values with the WCAG 2.x relative-luminance formula. AA is **4.5:1** for normal text, **3:1** for large text (18px+, or 14px+ bold) and for non-text/UI.
+
+| Pair | Ratio | Passes | Permitted use |
+|---|---|---|---|
+| Muted Gold `#B8912F` on White `#FFFFFF` | 2.95:1 | **Fails AA and the 3:1 floor** | Decorative only — underlines, rules, borders, background fills. Never text, never a lone meaningful icon, at any size |
+| Gold CTA button (§5 Forms) with white text | 2.95:1 | **Fails** | Not permitted. Charcoal Ink `#22262A` on the same gold measures **5.17:1** and is the required button-text colour |
+| Success Green `#3E8E5A` on White | 4.02:1 | **Fails AA** for normal text | Icons, borders and fills only. Confirmation *text* is Charcoal Ink (§2.6) |
+| Muted Gold `#B8912F` on Deep Forest Green `#1E4B3A` | 3.36:1 | **Fails** for body-size links | Not permitted for footer links. Footer link hover is Gold Light Tint `#F1E4C2` (§5 Footer) |
+| Charcoal Ink `#22262A` on White `#FFFFFF` | 15.23:1 | AAA | Body text and headings, any size |
+| White on Deep Forest Green `#1E4B3A` | 9.89:1 | AAA | Header, footer and primary-button text, any size |
+| Charcoal Ink on Gold Light Tint `#F1E4C2` | 12.05:1 | AAA | Callout and quote-block text, any size |
+| Charcoal Ink on Uniform Khaki `#DCCFA8` | 9.82:1 | AAA | Text over khaki section backgrounds, any size |
+| Slate Gray `#5B6470` on White | 6.00:1 | AA | Secondary text, captions, metadata |
+| Slate Gray on Warm Cream `#FAF7F0` | 5.61:1 | AA | Same, on alternate-background sections |
+| Uniform Teal `#3A7A72` on White | 4.99:1 | AA | Links, tags, secondary buttons |
+| Uniform Teal on Warm Cream `#FAF7F0` | 4.67:1 | AA (narrow margin) | Same. Re-measure before either hex is altered |
+| Alert Red `#B3413A` on White | 5.62:1 | AA | Error text, required-field warnings |
+
 - Always pair color with an icon, underline, or label for critical actions/errors — never rely on color alone
-- **Re-verify these ratios against actual Bangla renderings, not just Latin.** Bangla's heavier stroke weight and the *matra* (top bar) mean a contrast ratio that reads fine in Latin can read muddy in Bangla at the same size — this is why Bangla body text has its own 17px minimum (§3.4). Muted Gold's large-text-only restriction applies equally to Bangla.
+- **Re-verify these ratios against actual Bangla renderings, not just Latin.** Bangla's heavier stroke weight and the *matra* (top bar) mean a contrast ratio that reads fine in Latin can read muddy in Bangla at the same size — this is why Bangla body text has its own 17px minimum (§3.4). Muted Gold's decorative-only restriction applies equally to Bangla.
 
 ---
 
@@ -195,14 +210,14 @@ Deep Forest Green   #1E4B3A   — primary brand
 Forest Green Light  #2E6B52   — hover/secondary
 Charcoal Ink        #22262A   — body text
 Slate Gray          #5B6470   — secondary text
-Muted Gold          #B8912F   — accent/CTA
-Gold Light Tint     #F1E4C2   — callout backgrounds
+Muted Gold          #B8912F   — accent/CTA fill; 2.95:1 on white, FAILS — decorative only, never text (§9)
+Gold Light Tint     #F1E4C2   — callout backgrounds; footer link hover
 Uniform Teal        #3A7A72   — links/secondary buttons
 Uniform Khaki       #DCCFA8   — sparing texture/section bg
 Pure White          #FFFFFF   — primary background
 Warm Cream          #FAF7F0   — alternate section background
 Off-White Border    #EDE9DD   — dividers/borders
-Success Green       #3E8E5A   — confirmations
+Success Green       #3E8E5A   — confirmation icons/borders; 4.02:1, not for text (§9)
 Alert Red           #B3413A   — errors/warnings
 ```
 

@@ -9,8 +9,8 @@
     "awaiting_human": "Work an AI may not complete. Only a human may move this to `done`. Treated as NOT satisfying a dependency.",
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
-  "updated_at": "2026-08-14",
-  "updated_by": "T-010",
+  "updated_at": "2026-08-15",
+  "updated_by": "T-011",
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -100,7 +100,7 @@
     }
   },
   "progress": {
-    "done": 5,
+    "done": 7,
     "total": 77
   },
   "milestones": [
@@ -231,7 +231,7 @@
       "needs": [
         "T-010"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-012",
@@ -998,6 +998,13 @@
       "by": "T-010",
       "result": "Reference and lookup tables. prisma/migrations/0002_reference/migration.sql transcribes ARCHITECTURE.md §B-3 table for table, in the document's own order, which already satisfies the FK dependencies (locales first, since every *_translations references it). 28 tables: locales; roles/modules/permission_actions with role_translations, module_translations and action_translations; module_actions; special_grants; content_statuses; the seven admin-managed category lookups with their translations (notice_categories, gallery_categories, calendar_event_types, fee_types, designations, class_stages, registration_id_types); and the code-keyed contact_channel_types, social_platforms, video_providers, contact_message_statuses. Both locales indexes created. Section banner comments were kept because they carry the rationale (AUDIT B-1 for module_actions, AUDIT B-2 for special_grants, ADR-002 for the category lookups, the B-1.4 2NF example for fee_types.is_recurring_monthly). No models added to schema.prisma - Prisma is mapped over this SQL in T-023 - and no enums, per the card's Contract and ADR-002. Verified on a genuinely fresh database: created a scratch DB shifa_t010_verify, ran migrate deploy against it (both migrations applied clean), then dropped it, and applied to shifa_dev with the non-destructive db:migrate. shifa_dev now holds 28 tables, every one empty, with 0001_extensions and 0002_reference recorded. Constraint behaviour proved by transaction-and-rollback so nothing was seeded: a second is_default=TRUE locale fails on ux_locales_single_default (the card's Verify); three locales with is_default=FALSE insert fine, which proves the index is genuinely partial rather than a plain unique on a boolean; a duplicate url_prefix fails; direction='sideways' fails the CHECK; deleting a role cascades its translation away; deleting a locale still referenced by a translation is RESTRICTED; and renaming a locale code cascades to translations. Pipeline green: prisma validate, eslint, tsc --noEmit, vitest, next build. Two notes. The card's Do line says 'the two partial unique indexes on locales', but only ux_locales_single_default is partial - ux_locales_prefix is a plain unique index; §B-3 is authoritative and both were created exactly as written there, so this is card wording to correct, not a schema question. And `npm run db:reset` is unusable by an AI session: Prisma 6 refuses migrate reset when it detects an agent and demands explicit human consent through PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION. The scratch-database route above is the non-destructive substitute and T-024 and T-111 will need it too.",
       "next": "T-011"
+    },
+    {
+      "at": "2026-08-15",
+      "task": "T-011",
+      "by": "T-011",
+      "result": "Identity, sessions and authorization. prisma/migrations/0003_identity/migration.sql transcribes ARCHITECTURE.md §B-4 table for table in the document's own order, which also satisfies the FK dependencies (users first, since the other six reference it). Seven tables: users, user_module_permissions (with the composite FK to module_actions(module_code, action_code) that the card names), user_special_grants, sessions, password_reset_tokens, login_attempts, rate_limit_counters, plus the six indexes §B-4 declares - ux_users_username and ux_users_email partial on deleted_at IS NULL, ix_sessions_user_live partial on revoked_at IS NULL, and the two login_attempts windows and the rate-limit expiry. No models added to schema.prisma; Prisma is mapped over this SQL in T-023. No auth code and no permission engine (T-031). Verified on a genuinely fresh database: created shifa_t011_verify, ran migrate deploy (all three migrations applied clean), exercised the constraints there, then dropped it and applied to shifa_dev with the non-destructive db:migrate. shifa_dev now holds 36 tables - 28 from T-010, these 7, and _prisma_migrations - and all seven new ones are empty. Constraint behaviour proved by transaction-and-rollback so nothing was seeded. The card's Verify both ways: granting (rahim,'home','delete') is rejected by the composite FK with 'Key (module_code, action_code)=(home, delete) is not present in table module_actions' when module_actions declares only ('home','edit'), and granting the declared ('home','edit') pair succeeds. Also proved: a second live 'RAHIM' collides on ux_users_username, which shows the index is genuinely CITEXT-cased; the same username inserts again once the first row carries deleted_at, which shows the index is genuinely partial rather than a plain unique; two live users with NULL email coexist, so the email index skips NULLs as intended; revoked_reason='because' fails the CHECK while 'password_change' passes; deleting a user cascades its permissions, grants, sessions and reset tokens to zero; an unknown role_code fails users_role_code_fkey; and the defaults land as §B-4 writes them - must_change_password TRUE, is_active TRUE, preferred_locale 'bn', failed_login_count 0, uid populated by gen_random_uuid(). Pipeline green: prisma validate, tsc --noEmit, eslint, vitest, next build. One note for T-069 and T-110. The composite FK carries ON DELETE CASCADE, so retiring a module_actions pair silently deletes every grant that referenced it - correct per §B-4 and it does keep the table consistent, but it means the admin matrix UI can drop permissions as a side effect of editing the action vocabulary, with no error shown. That deletion is not currently audited; T-035's audit writer and the T-069 matrix screen should decide whether retiring an action needs a confirmation and an audit row.",
+      "next": "T-012"
     }
   ]
 }

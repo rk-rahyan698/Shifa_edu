@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-15",
-  "updated_by": "T-012",
+  "updated_by": "T-013",
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -100,7 +100,7 @@
     }
   },
   "progress": {
-    "done": 8,
+    "done": 9,
     "total": 77
   },
   "milestones": [
@@ -249,7 +249,7 @@
       "needs": [
         "T-012"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-014",
@@ -1012,6 +1012,13 @@
       "by": "T-012",
       "result": "Media assets. prisma/migrations/0004_media/migration.sql transcribes ARCHITECTURE.md §B-5 table for table in the document's own order, which also satisfies the FK dependencies (media_assets first, since the other two reference it). Three tables - media_assets, media_asset_translations, media_variants - plus the two indexes the card names: ix_media_checksum on checksum_sha256, and ix_media_live on created_at DESC partial on deleted_at IS NULL (pg_indexes confirms the WHERE clause is on the index, not just in the query). No models added to schema.prisma; Prisma is mapped over this SQL in T-023. No upload pipeline and no storage client (T-037). Verified on a genuinely fresh database: created shifa_t012_verify, ran migrate deploy (all four migrations applied clean), exercised the constraints there, then dropped it and applied to shifa_dev with the non-destructive db:migrate. shifa_dev now holds 39 tables - 28 from T-010, 7 from T-011, these 3, and _prisma_migrations - and all three new ones are empty. Constraint behaviour proved by transaction-and-rollback so nothing was seeded. The card's Verify: bucket='cdn' is rejected by media_assets_bucket_check, while 'public' and 'private' both insert. Also proved: byte_size=0 and width_px=0 fail their CHECKs; a PDF row with NULL width/height is accepted, which is what the §B-5 comment intends; storage_key is globally UNIQUE on assets and again on variants, and a variant key colliding with an existing variant key fails; two assets may share a checksum, so dedupe stays an application-level lookup over ix_media_checksum rather than a constraint; alt_text is NOT NULL, so a translation row cannot exist without accessible text; an unknown locale fails the FK, deleting a referenced locale is RESTRICTed, and renaming one cascades; variant_code is unique per asset but reusable across assets; deleting an asset cascades its translations and variants away; deleting the uploading user leaves the asset and nulls uploaded_by_user_id, so attribution loss never destroys a file row. Pipeline green: prisma validate, tsc --noEmit, eslint, vitest, next build. Two notes for T-037 and T-013. First, nothing in the schema forces a media_asset to carry a translation, so an image can be stored with no alt text in any locale; §A-10.1 makes alt text the point of the registry, but the enforcement has to live in the upload pipeline and in T-113's i18n-parity gate, not here. Second, media_variants.byte_size has no CHECK (byte_size > 0) even though media_assets does - that asymmetry is in §B-5 as written and was transcribed rather than corrected; if it should be tightened, that is a T-022 index-and-constraint pass decision, not a revision of this migration.",
       "next": "T-013"
+    },
+    {
+      "at": "2026-08-15",
+      "task": "T-013",
+      "by": "T-013",
+      "result": "Site configuration and SEO. prisma/migrations/0005_site_config/migration.sql transcribes ARCHITECTURE.md §B-6 table for table in the document's own order, which also satisfies the FK dependencies (each parent before its translations). All 12 tables the card lists: site_branding(+tr), site_settings(+tr), school_registration_ids, contact_channels(+tr), social_links, site_stats(+tr), pages, page_translations - with the CHECK (id = 1) guard on both singletons and ck_stat_verified. No models added to schema.prisma; Prisma is mapped over this SQL in T-023. The admin screens that write these tables are T-060. Verified on a genuinely fresh database: created shifa_t013_verify, ran migrate deploy (all five migrations applied clean), exercised the constraints there, then dropped it and applied to shifa_dev with the non-destructive db:migrate. shifa_dev now holds 51 tables - 28 from T-010, 7 from T-011, 3 from T-012, these 12, and _prisma_migrations - and all twelve new ones are empty. Constraint behaviour proved by transaction-and-rollback so nothing was seeded. Both of the card's Verify cases: a second site_settings row is rejected by site_settings_id_check, and re-using id=1 is rejected by the PK, so the singleton is closed from both directions (same on site_branding); and an is_active stat with verified_on IS NULL fails ck_stat_verified. Two further things about ck_stat_verified worth recording, because P7 depends on them: is_active defaults to TRUE, so an editor who supplies neither field still cannot create an unverified public stat, and the CHECK holds on UPDATE as well - activating a draft stat and clearing verified_on on a live one both fail. An inactive unverified draft is accepted, which is the intended escape hatch. Also proved: founded_year=1200 fails its range CHECK; numeric_value is genuinely NUMERIC (pg_typeof confirms, and SUM works), not the TEXT of the old PRD; contact channels are rows, so two phones and an email coexist with per-locale labels and an unknown channel type fails the FK; social_links is one row per platform and a second facebook link is rejected; school_registration_ids is keyed by the type itself, so the same type twice is rejected; pages.code is unique and page_translations.meta_title is NOT NULL; deleting a media asset nulls logo_media_id and og_image_media_id while keeping the rows; deleting the settings singleton cascades its translations away. On the branding boundary the card protects: an information_schema query confirms site_branding carries no address/office_hours/latitude/map column, site_settings carries no logo/favicon column, and school_name exists in exactly one table in the whole database - site_branding_translations. Pipeline green: prisma validate, tsc --noEmit, eslint, vitest, next build. One note for T-024 and T-030. site_settings.default_locale_code duplicates what locales.is_default already asserts, and §B-3's ux_locales_single_default enforces. Two places now answer 'what is the default locale', and nothing keeps them in agreement - the FK only checks the code exists. Both are in ARCHITECTURE as written so both were transcribed, but the seed in T-024 should set them from one source and the i18n runtime in T-030 should decide which one it reads; a mismatch would surface as the site serving one default while the admin claims another.",
+      "next": "T-014"
     }
   ]
 }

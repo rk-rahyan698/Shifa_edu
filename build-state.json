@@ -73,9 +73,7 @@
       ]
     }
   },
-  "blocked_on": [
-    "T-020"
-  ],
+  "blocked_on": [],
   "open_decisions_required_before": {
     "ADR-005_url_change": {
       "affects": [
@@ -314,8 +312,7 @@
       "needs": [
         "T-010"
       ],
-      "status": "blocked",
-      "blocked_reason": "ARCHITECTURE.md §B-13's purge_after column cannot be created on PostgreSQL as written. The expression is `DATE GENERATED ALWAYS AS ((submitted_at + INTERVAL '12 months')::date) STORED`, and PostgreSQL requires a generation expression to be IMMUTABLE. Both operations in it are only STABLE, because both depend on the session TimeZone: pg_proc gives timestamptz_pl_interval provolatile='s', and the timestamptz->date cast function is 's' as well. CREATE TABLE fails with SQLSTATE 42P17 'generation expression is not immutable'. This is not a version quirk, a local misconfiguration or a Prisma artifact - it is a property of the expression, and it fails identically on any PostgreSQL. Verified on PostgreSQL 18.6: the table was never created and migrate deploy left 0012 recorded unfinished. A generated column IS achievable, and the card's Do, Contract and Verify are all satisfiable, but only by pinning a timezone inside the expression - `((submitted_at AT TIME ZONE '<zone>') + INTERVAL '12 months')::date`, which is immutable and was proved to create successfully. That is why this is blocked rather than a judgement call: the two candidate zones are NOT equivalent, and choosing between them is a data-protection decision plus an edit to a file this card does not own. Proved by experiment: a message submitted at 2026-08-16 01:00+06 gets purge_after 2027-08-15 under AT TIME ZONE 'UTC' and 2027-08-16 under AT TIME ZONE 'Asia/Dhaka'. The two disagree by a full day for every message submitted between midnight and 6am Dhaka time - a quarter of every day - so the choice decides, for a quarter of all submissions, which calendar day the school's 12-month retention promise in §A-16.1 actually expires on. 'Asia/Dhaka' is the recommendation, since the retention promise is made to Bangladeshi parents in Bangladeshi civil time and the school's own staff read the inbox in that zone, but it is the school's call to ratify, not an AI's to assume. TO UNBLOCK: (1) decide the zone; (2) amend ARCHITECTURE.md §B-13 so the authoritative SQL is executable, since a later transcription would otherwise reintroduce the same failure - that file is OUTSIDE this card's Files list, which is the second reason this stops here rather than being fixed in place; (3) note the same in §B-16, which cites this column as the worked example of a derived-but-indexable value; (4) re-run T-020. Nothing was left behind: prisma/migrations/0012_contact/ was written, found unappliable, and REMOVED, because an unappliable migration in the directory would have failed migrate deploy for T-021 and every task after it. shifa_dev was never touched - it still holds 107 tables, has no contact_messages, and its last applied migration is 0011_gallery; npx prisma migrate deploy reports no pending migrations, and prisma validate, tsc --noEmit and eslint are clean."
+      "status": "todo"
     },
     {
       "id": "T-021",

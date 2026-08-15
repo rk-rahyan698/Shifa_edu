@@ -2132,7 +2132,19 @@ CREATE TABLE contact_messages (
     deleted_by_user_id BIGINT      REFERENCES users(id) ON DELETE SET NULL,
     -- Retention is DERIVED, never stored as an independent value —
     -- a GENERATED column keeps 3NF intact while staying indexable (B-16)
-    purge_after DATE GENERATED ALWAYS AS ((submitted_at + INTERVAL '12 months')::date) STORED
+    --
+    -- AT TIME ZONE 'Asia/Dhaka' is REQUIRED, not decorative. PostgreSQL only
+    -- accepts an IMMUTABLE generation expression, and both `timestamptz +
+    -- interval` and the `timestamptz -> date` cast are merely STABLE, because
+    -- both read the session TimeZone. Without an explicit zone the CREATE TABLE
+    -- fails outright with SQLSTATE 42P17, 'generation expression is not
+    -- immutable'. Pinning the zone makes it immutable AND fixes the retention
+    -- clock to the civil time the promise in A-16.1 was made in: the school and
+    -- the parents who write to it are in Bangladesh, and a message submitted at
+    -- 01:00 Dhaka must expire on its Dhaka calendar day, not on the UTC day
+    -- before it.
+    purge_after DATE GENERATED ALWAYS AS
+        (((submitted_at AT TIME ZONE 'Asia/Dhaka') + INTERVAL '12 months')::date) STORED
 );
 CREATE INDEX ix_contact_inbox ON contact_messages (submitted_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX ix_contact_purge ON contact_messages (purge_after);
@@ -2228,6 +2240,17 @@ Two, both deliberate, both justified. Normalization serves correctness; where it
 **Violation:** derived from `submitted_at` plus a retention constant.
 
 **Why it is acceptable:** it is a **PostgreSQL `GENERATED ALWAYS … STORED` column** — the database computes and maintains it; it cannot drift from `submitted_at`, and it cannot be written independently. It exists to be indexed so the retention job is a fast range scan rather than a full-table expression scan. Generated columns are the sanctioned mechanism for exactly this, and they preserve the guarantee 3NF is protecting: no independent, divergable copy of derived data.
+
+**The expression must pin a time zone:**
+
+```sql
+purge_after DATE GENERATED ALWAYS AS
+    (((submitted_at AT TIME ZONE 'Asia/Dhaka') + INTERVAL '12 months')::date) STORED
+```
+
+PostgreSQL requires a generation expression to be `IMMUTABLE`. Both `timestamptz + interval` and the `timestamptz -> date` cast are only `STABLE` — both read the session `TimeZone` — so the unqualified form `((submitted_at + INTERVAL '12 months')::date)` is rejected at `CREATE TABLE` with **SQLSTATE 42P17, `generation expression is not immutable`**. This is a property of the expression, not a version quirk: it fails on every PostgreSQL.
+
+`AT TIME ZONE 'Asia/Dhaka'` is therefore load-bearing twice over. It makes the expression immutable, and it fixes the retention clock to the civil time the A-16.1 promise was made in. The choice is not cosmetic: a message submitted at `2026-08-16 01:00+06` yields `2027-08-16` under `Asia/Dhaka` but `2027-08-15` under `UTC`. The two disagree for every message submitted between midnight and 06:00 Dhaka time — roughly a quarter of all submissions — and what they disagree about is the calendar day on which the school's twelve-month retention commitment to a parent expires. Bangladesh does not currently observe DST; were that to change, `AT TIME ZONE` resolves each instant against the zone's rules at that instant, so historical rows keep the date they were computed with.
 
 ### Explicitly *not* exceptions
 

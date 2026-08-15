@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-16",
-  "updated_by": "T-025",
+  "updated_by": "T-023",
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -100,7 +100,7 @@
     }
   },
   "progress": {
-    "done": 19,
+    "done": 20,
     "total": 78
   },
   "milestones": [
@@ -345,7 +345,7 @@
       "needs": [
         "T-025"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-024",
@@ -1128,6 +1128,13 @@
       "by": "T-025",
       "result": "prisma/migrations/0015_constraints/migration.sql: the seven deferred constraints, every affected table empty so no repair was needed. Withdrawal proved to be one statement — clearing consent alone was rejected on faculty, committee members and gallery photos; clearing it together with unpublishing was accepted. A cross-year section was refused, and deleting a section nulled only class_section_id. exams.subject_id stays out of scope, as the card says.",
       "next": "T-023"
+    },
+    {
+      "at": "2026-08-16",
+      "task": "T-023",
+      "by": "T-023",
+      "result": "prisma/schema.prisma: 108 models mapped over the applied SQL — PascalCase via @@map, camelCase via @map, composite @@id on all 47 translation and junction models, zero enums — plus src/types/db.ts. migrate diff reports no drift; tsc clean. Deferred: Prisma warns on fk_routine_section because it cannot express ON DELETE SET NULL (class_section_id), so this FK must never be regenerated from the schema; purgeAfter is @ignore'd and needs a raw read.",
+      "next": "T-024"
     }
   ]
 }

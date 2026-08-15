@@ -1,10 +1,39 @@
-// Prisma is a client over authoritative SQL, not the source of the schema —
-// ARCHITECTURE.md §B-18. Tables arrive as hand-written migrations across M1
-// (T-010…T-022) and are mapped here in T-023 with @@map / @map, keeping
-// snake_case in the database and idiomatic names in TypeScript.
+// Prisma is a CLIENT OVER AUTHORITATIVE SQL, not the source of the schema.
+// ARCHITECTURE.md Part B is the schema; the hand-written migrations in
+// prisma/migrations are what create it; this file maps TypeScript onto what is
+// already there (§B-18, T-023).
 //
-// T-004 declares the datasource and generator only. No models. No enums:
-// lookup tables stay lookup tables (ADR-002, §B-18).
+// Contract (T-023): PRISMA NEVER OWNS THE SCHEMA. Do not run `prisma migrate
+// dev` against this file to change the database - it would generate SQL from
+// the model list and silently drop everything Prisma cannot express. Change
+// Part B first, then hand-write a migration, then re-map here. `prisma db pull`
+// is the safe direction; `prisma migrate diff --from-schema-datamodel
+// --to-schema-datasource` is what proves the two still agree.
+//
+// This file was produced by introspecting the 15 applied migrations and then
+// hand-correcting the naming: models are PascalCase singular over @@map, fields
+// are camelCase over @map, and the relation fields Prisma generates as
+// `users_notices_author_user_idTousers` are named for the role they play
+// (`author`, `publishedBy`, `deletedBy`). Every translation model keeps the
+// composite @@id([<parent>Id, localeCode]) §B-18 requires.
+//
+// NO ENUMS. The lookup tables - roles, modules, permission_actions,
+// content_statuses, notice_categories, gallery_categories, fee_types,
+// designations, class_stages and the rest - stay relations. Converting them to
+// Prisma enums would reintroduce ADR-002 and put a migration in the way of
+// adding a category, which is exactly what §B-3 exists to prevent.
+//
+// WHAT PRISMA CANNOT SEE, and where it actually lives:
+//   - CHECK constraints (singleton id = 1, the three consent checks, the date
+//     ranges, ck_stat_verified, ck_notice_published) - migrations 0002-0015
+//   - partial indexes (every public read index has a WHERE clause) and the GIN
+//     expression index ix_notice_fts - migrations 0010-0014
+//   - REVOKE UPDATE, DELETE ON activity_logs - migration 0013
+//   - ContactMessage.purgeAfter is GENERATED ALWAYS ... STORED, which Prisma
+//     models as an ordinary default. It is @ignore'd so no generated client
+//     type can offer to write it; read it with a raw query (§B-18).
+// None of these are optional refinements. They are correctness guarantees, and
+// they are invisible here by necessity, not by omission.
 
 generator client {
   provider = "prisma-client-js"
@@ -13,4 +42,1584 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model AboutContent {
+  id                        Int                       @id @default(1) @db.SmallInt
+  principalPhotoMediaId     BigInt?                   @map("principal_photo_media_id")
+  principalSignatureMediaId BigInt?                   @map("principal_signature_media_id")
+  updatedAt                 DateTime                  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByUserId           BigInt?                   @map("updated_by_user_id")
+  principalPhoto            MediaAsset?               @relation("AboutContentPrincipalPhoto", fields: [principalPhotoMediaId], references: [id], onUpdate: NoAction)
+  principalSignature        MediaAsset?               @relation("AboutContentPrincipalSignature", fields: [principalSignatureMediaId], references: [id], onUpdate: NoAction)
+  updatedBy                 User?                     @relation(fields: [updatedByUserId], references: [id], onUpdate: NoAction)
+  aboutContentTranslations  AboutContentTranslation[]
+
+  @@map("about_content")
+}
+
+model AboutContentTranslation {
+  aboutContentId       Int          @db.SmallInt @map("about_content_id")
+  localeCode           String       @map("locale_code")
+  historyHtml          String?      @map("history_html")
+  visionHtml           String?      @map("vision_html")
+  missionHtml          String?      @map("mission_html")
+  principalMessageHtml String?      @map("principal_message_html")
+  principalName        String?      @map("principal_name")
+  principalDesignation String?      @map("principal_designation")
+  aboutContent         AboutContent @relation(fields: [aboutContentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale               Locale       @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([aboutContentId, localeCode])
+  @@map("about_content_translations")
+}
+
+model AcademicInfo {
+  id                       Int                       @id @default(1) @db.SmallInt
+  updatedAt                DateTime                  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByUserId          BigInt?                   @map("updated_by_user_id")
+  updatedBy                User?                     @relation(fields: [updatedByUserId], references: [id], onUpdate: NoAction)
+  academicInfoTranslations AcademicInfoTranslation[]
+
+  @@map("academic_info")
+}
+
+model AcademicInfoTranslation {
+  academicInfoId  Int          @db.SmallInt @map("academic_info_id")
+  localeCode      String       @map("locale_code")
+  curriculumHtml  String?      @map("curriculum_html")
+  classTimingHtml String?      @map("class_timing_html")
+  assessmentHtml  String?      @map("assessment_html")
+  academicInfo    AcademicInfo @relation(fields: [academicInfoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale          Locale       @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([academicInfoId, localeCode])
+  @@map("academic_info_translations")
+}
+
+model AcademicYearTranslation {
+  academicYearId BigInt       @map("academic_year_id")
+  localeCode     String       @map("locale_code")
+  label          String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale         Locale       @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([academicYearId, localeCode])
+  @@map("academic_year_translations")
+}
+
+model AcademicYear {
+  id                       BigInt                    @id @default(autoincrement())
+  code                     String                    @unique
+  startsOn                 DateTime                  @db.Date @map("starts_on")
+  endsOn                   DateTime                  @db.Date @map("ends_on")
+  isCurrent                Boolean                   @default(false) @map("is_current")
+  isActive                 Boolean                   @default(true) @map("is_active")
+  academicYearTranslations AcademicYearTranslation[]
+  admissionCycle           AdmissionCycle?
+  calendarEvents           CalendarEvent[]
+  classRoutines            ClassRoutine[]
+  classSections            ClassSection[]
+  classSubjects            ClassSubject[]
+  examTerms                ExamTerm[]
+  feeStructures            FeeStructure[]
+
+  @@map("academic_years")
+}
+
+model AchievementTranslation {
+  achievementId BigInt      @map("achievement_id")
+  localeCode    String      @map("locale_code")
+  title         String
+  description   String?
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale        Locale      @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([achievementId, localeCode])
+  @@map("achievement_translations")
+}
+
+model Achievement {
+  id                      BigInt                   @id @default(autoincrement())
+  achievedYear            Int?                     @db.SmallInt @map("achieved_year")
+  mediaId                 BigInt?                  @map("media_id")
+  icon                    String?
+  sortOrder               Int                      @default(0) @db.SmallInt @map("sort_order")
+  isActive                Boolean                  @default(true) @map("is_active")
+  createdAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt               DateTime?                @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId         BigInt?                  @map("deleted_by_user_id")
+  achievementTranslations AchievementTranslation[]
+  deletedBy               User?                    @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  media                   MediaAsset?              @relation(fields: [mediaId], references: [id], onUpdate: NoAction)
+
+  @@map("achievements")
+}
+
+model ActionTranslation {
+  actionCode String           @map("action_code")
+  localeCode String           @map("locale_code")
+  name       String
+  action     PermissionAction @relation(fields: [actionCode], references: [code], onDelete: Cascade)
+  locale     Locale           @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([actionCode, localeCode])
+  @@map("action_translations")
+}
+
+model ActivityLog {
+  id                    BigInt   @id @default(autoincrement())
+  actorUserId           BigInt?  @map("actor_user_id")
+  actorUsernameSnapshot String   @map("actor_username_snapshot")
+  actorRoleSnapshot     String   @map("actor_role_snapshot")
+  actionCode            String   @map("action_code")
+  moduleCode            String?  @map("module_code")
+  entityTable           String?  @map("entity_table")
+  entityId              BigInt?  @map("entity_id")
+  summary               String
+  changeDiff            Json?    @map("change_diff")
+  ipAddress             String?  @db.Inet @map("ip_address")
+  createdAt             DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  actor                 User?    @relation(fields: [actorUserId], references: [id], onUpdate: NoAction)
+  module                Module?  @relation(fields: [moduleCode], references: [code], onDelete: NoAction)
+
+  @@index([actorUserId, createdAt(sort: Desc)], map: "ix_activity_actor")
+  @@index([entityTable, entityId, createdAt(sort: Desc)], map: "ix_activity_entity")
+  @@index([createdAt(sort: Desc)], map: "ix_activity_recent")
+  @@map("activity_logs")
+}
+
+model AdmissionCycleTranslation {
+  admissionCycleId BigInt         @map("admission_cycle_id")
+  localeCode       String         @map("locale_code")
+  statusBanner     String?        @map("status_banner")
+  admissionCycle   AdmissionCycle @relation(fields: [admissionCycleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale           Locale         @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([admissionCycleId, localeCode])
+  @@map("admission_cycle_translations")
+}
+
+model AdmissionCycle {
+  id                         BigInt                      @id @default(autoincrement())
+  academicYearId             BigInt                      @unique @map("academic_year_id")
+  isOpen                     Boolean                     @default(false) @map("is_open")
+  opensOn                    DateTime?                   @db.Date @map("opens_on")
+  closesOn                   DateTime?                   @db.Date @map("closes_on")
+  examDate                   DateTime?                   @db.Date @map("exam_date")
+  formMediaId                BigInt?                     @map("form_media_id")
+  isCurrent                  Boolean                     @default(false) @map("is_current")
+  createdAt                  DateTime                    @default(now()) @db.Timestamptz(6) @map("created_at")
+  admissionCycleTranslations AdmissionCycleTranslation[]
+  academicYear               AcademicYear                @relation(fields: [academicYearId], references: [id], onUpdate: NoAction)
+  form                       MediaAsset?                 @relation(fields: [formMediaId], references: [id], onUpdate: NoAction)
+  admissionSteps             AdmissionStep[]
+
+  @@map("admission_cycles")
+}
+
+model AdmissionDocumentTranslation {
+  admissionDocumentId BigInt            @map("admission_document_id")
+  localeCode          String            @map("locale_code")
+  name                String
+  note                String?
+  admissionDocument   AdmissionDocument @relation(fields: [admissionDocumentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale              Locale            @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([admissionDocumentId, localeCode])
+  @@map("admission_document_translations")
+}
+
+model AdmissionDocument {
+  id                            BigInt                         @id @default(autoincrement())
+  isMandatory                   Boolean                        @default(true) @map("is_mandatory")
+  sortOrder                     Int                            @default(0) @db.SmallInt @map("sort_order")
+  isActive                      Boolean                        @default(true) @map("is_active")
+  admissionDocumentTranslations AdmissionDocumentTranslation[]
+
+  @@map("admission_documents")
+}
+
+model AdmissionEligibility {
+  id                               BigInt                            @id @default(autoincrement())
+  classGradeId                     BigInt                            @unique @map("class_grade_id")
+  minAgeYears                      Decimal?                          @db.Decimal(3, 1) @map("min_age_years")
+  maxAgeYears                      Decimal?                          @db.Decimal(3, 1) @map("max_age_years")
+  ageAsOf                          DateTime?                         @db.Date @map("age_as_of")
+  isActive                         Boolean                           @default(true) @map("is_active")
+  classGrade                       ClassGrade                        @relation(fields: [classGradeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  admissionEligibilityTranslations AdmissionEligibilityTranslation[]
+
+  @@map("admission_eligibility")
+}
+
+model AdmissionEligibilityTranslation {
+  admissionEligibilityId BigInt               @map("admission_eligibility_id")
+  localeCode             String               @map("locale_code")
+  note                   String?
+  admissionEligibility   AdmissionEligibility @relation(fields: [admissionEligibilityId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "admission_eligibility_translation_admission_eligibility_id_fkey")
+  locale                 Locale               @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([admissionEligibilityId, localeCode])
+  @@map("admission_eligibility_translations")
+}
+
+model AdmissionFaqTranslation {
+  admissionFaqId BigInt       @map("admission_faq_id")
+  localeCode     String       @map("locale_code")
+  question       String
+  answer         String
+  admissionFaq   AdmissionFaq @relation(fields: [admissionFaqId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale         Locale       @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([admissionFaqId, localeCode])
+  @@map("admission_faq_translations")
+}
+
+model AdmissionFaq {
+  id                       BigInt                    @id @default(autoincrement())
+  sortOrder                Int                       @default(0) @db.SmallInt @map("sort_order")
+  isActive                 Boolean                   @default(true) @map("is_active")
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt                DateTime?                 @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId          BigInt?                   @map("deleted_by_user_id")
+  admissionFaqTranslations AdmissionFaqTranslation[]
+  deletedBy                User?                     @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+
+  @@map("admission_faqs")
+}
+
+model AdmissionStepTranslation {
+  admissionStepId BigInt        @map("admission_step_id")
+  localeCode      String        @map("locale_code")
+  title           String
+  description     String?
+  admissionStep   AdmissionStep @relation(fields: [admissionStepId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale          Locale        @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([admissionStepId, localeCode])
+  @@map("admission_step_translations")
+}
+
+model AdmissionStep {
+  id                        BigInt                     @id @default(autoincrement())
+  admissionCycleId          BigInt?                    @map("admission_cycle_id")
+  stepNumber                Int                        @db.SmallInt @map("step_number")
+  icon                      String?
+  isActive                  Boolean                    @default(true) @map("is_active")
+  admissionStepTranslations AdmissionStepTranslation[]
+  admissionCycle            AdmissionCycle?            @relation(fields: [admissionCycleId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("admission_steps")
+}
+
+model CalendarEventTranslation {
+  calendarEventId BigInt        @map("calendar_event_id")
+  localeCode      String        @map("locale_code")
+  title           String
+  description     String?
+  calendarEvent   CalendarEvent @relation(fields: [calendarEventId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale          Locale        @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([calendarEventId, localeCode])
+  @@map("calendar_event_translations")
+}
+
+model CalendarEventTypeTranslation {
+  calendarEventTypeId BigInt            @map("calendar_event_type_id")
+  localeCode          String            @map("locale_code")
+  name                String
+  calendarEventType   CalendarEventType @relation(fields: [calendarEventTypeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale              Locale            @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([calendarEventTypeId, localeCode])
+  @@map("calendar_event_type_translations")
+}
+
+model CalendarEventType {
+  id                            BigInt                         @id @default(autoincrement())
+  code                          String                         @unique
+  colorHex                      String?                        @map("color_hex")
+  sortOrder                     Int                            @default(0) @db.SmallInt @map("sort_order")
+  isActive                      Boolean                        @default(true) @map("is_active")
+  calendarEventTypeTranslations CalendarEventTypeTranslation[]
+  calendarEvents                CalendarEvent[]
+
+  @@map("calendar_event_types")
+}
+
+model CalendarEvent {
+  id                        BigInt                     @id @default(autoincrement())
+  academicYearId            BigInt                     @map("academic_year_id")
+  calendarEventTypeId       BigInt                     @map("calendar_event_type_id")
+  startsOn                  DateTime                   @db.Date @map("starts_on")
+  endsOn                    DateTime?                  @db.Date @map("ends_on")
+  isActive                  Boolean                    @default(true) @map("is_active")
+  createdAt                 DateTime                   @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt                 DateTime?                  @db.Timestamptz(6) @map("deleted_at")
+  calendarEventTranslations CalendarEventTranslation[]
+  academicYear              AcademicYear               @relation(fields: [academicYearId], references: [id], onUpdate: NoAction)
+  calendarEventType         CalendarEventType          @relation(fields: [calendarEventTypeId], references: [id], onUpdate: NoAction)
+
+  @@map("calendar_events")
+}
+
+model ClassGradeTranslation {
+  classGradeId BigInt     @map("class_grade_id")
+  localeCode   String     @map("locale_code")
+  name         String
+  shortName    String?    @map("short_name")
+  classGrade   ClassGrade @relation(fields: [classGradeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale       Locale     @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([classGradeId, localeCode])
+  @@map("class_grade_translations")
+}
+
+model ClassGrade {
+  id                     BigInt                  @id @default(autoincrement())
+  code                   String                  @unique
+  classStageId           BigInt?                 @map("class_stage_id")
+  sortOrder              Int                     @default(0) @db.SmallInt @map("sort_order")
+  isActive               Boolean                 @default(true) @map("is_active")
+  createdAt              DateTime                @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt              DateTime?               @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId        BigInt?                 @map("deleted_by_user_id")
+  admissionEligibility   AdmissionEligibility?
+  classGradeTranslations ClassGradeTranslation[]
+  classStage             ClassStage?             @relation(fields: [classStageId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  deletedBy              User?                   @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  classRoutines          ClassRoutine[]
+  classSections          ClassSection[]
+  classSubjects          ClassSubject[]
+  exams                  Exam[]
+  feeStructures          FeeStructure[]
+
+  @@map("class_grades")
+}
+
+model ClassRoutine {
+  id               BigInt        @id @default(autoincrement())
+  classGradeId     BigInt        @map("class_grade_id")
+  classSectionId   BigInt?       @map("class_section_id")
+  academicYearId   BigInt        @map("academic_year_id")
+  mediaId          BigInt        @map("media_id")
+  effectiveFrom    DateTime      @default(dbgenerated("CURRENT_DATE")) @db.Date @map("effective_from")
+  isCurrent        Boolean       @default(true) @map("is_current")
+  uploadedByUserId BigInt?       @map("uploaded_by_user_id")
+  createdAt        DateTime      @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt        DateTime?     @db.Timestamptz(6) @map("deleted_at")
+  academicYear     AcademicYear  @relation(fields: [academicYearId], references: [id], onUpdate: NoAction)
+  classGrade       ClassGrade    @relation(fields: [classGradeId], references: [id], onUpdate: NoAction)
+  media            MediaAsset    @relation(fields: [mediaId], references: [id], onUpdate: NoAction)
+  uploadedBy       User?         @relation(fields: [uploadedByUserId], references: [id], onUpdate: NoAction)
+  classSection     ClassSection? @relation(fields: [classSectionId, classGradeId, academicYearId], references: [id, classGradeId, academicYearId], onDelete: SetNull, onUpdate: NoAction, map: "fk_routine_section")
+
+  @@map("class_routines")
+}
+
+model ClassSection {
+  id                      BigInt                   @id @default(autoincrement())
+  classGradeId            BigInt                   @map("class_grade_id")
+  academicYearId          BigInt                   @map("academic_year_id")
+  name                    String
+  capacity                Int?                     @db.SmallInt
+  isActive                Boolean                  @default(true) @map("is_active")
+  classRoutines           ClassRoutine[]
+  academicYear            AcademicYear             @relation(fields: [academicYearId], references: [id], onUpdate: NoAction)
+  classGrade              ClassGrade               @relation(fields: [classGradeId], references: [id], onUpdate: NoAction)
+  facultyClassAssignments FacultyClassAssignment[]
+
+  @@unique([classGradeId, academicYearId, name])
+  @@unique([id, classGradeId, academicYearId])
+  @@map("class_sections")
+}
+
+model ClassStageTranslation {
+  classStageId BigInt     @map("class_stage_id")
+  localeCode   String     @map("locale_code")
+  name         String
+  classStage   ClassStage @relation(fields: [classStageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale       Locale     @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([classStageId, localeCode])
+  @@map("class_stage_translations")
+}
+
+model ClassStage {
+  id                     BigInt                  @id @default(autoincrement())
+  code                   String                  @unique
+  sortOrder              Int                     @default(0) @db.SmallInt @map("sort_order")
+  classGrades            ClassGrade[]
+  classStageTranslations ClassStageTranslation[]
+
+  @@map("class_stages")
+}
+
+model ClassSubject {
+  classGradeId   BigInt       @map("class_grade_id")
+  subjectId      BigInt       @map("subject_id")
+  academicYearId BigInt       @map("academic_year_id")
+  isOptional     Boolean      @default(false) @map("is_optional")
+  sortOrder      Int          @default(0) @db.SmallInt @map("sort_order")
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id], onUpdate: NoAction)
+  classGrade     ClassGrade   @relation(fields: [classGradeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subject        Subject      @relation(fields: [subjectId], references: [id], onUpdate: NoAction)
+
+  @@id([classGradeId, subjectId, academicYearId])
+  @@map("class_subjects")
+}
+
+model CommitteeMemberTranslation {
+  committeeMemberId BigInt          @map("committee_member_id")
+  localeCode        String          @map("locale_code")
+  name              String
+  designation       String
+  committeeMember   CommitteeMember @relation(fields: [committeeMemberId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale            Locale          @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([committeeMemberId, localeCode])
+  @@map("committee_member_translations")
+}
+
+model CommitteeMember {
+  id                          BigInt                       @id @default(autoincrement())
+  photoMediaId                BigInt?                      @map("photo_media_id")
+  publishConsentAt            DateTime?                    @db.Timestamptz(6) @map("publish_consent_at")
+  sortOrder                   Int                          @default(0) @db.SmallInt @map("sort_order")
+  isActive                    Boolean                      @default(true) @map("is_active")
+  createdAt                   DateTime                     @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt                   DateTime?                    @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId             BigInt?                      @map("deleted_by_user_id")
+  committeeMemberTranslations CommitteeMemberTranslation[]
+  deletedBy                   User?                        @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  photo                       MediaAsset?                  @relation(fields: [photoMediaId], references: [id], onUpdate: NoAction)
+
+  @@map("committee_members")
+}
+
+model ContactChannelTranslation {
+  contactChannelId BigInt         @map("contact_channel_id")
+  localeCode       String         @map("locale_code")
+  label            String
+  contactChannel   ContactChannel @relation(fields: [contactChannelId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale           Locale         @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([contactChannelId, localeCode])
+  @@map("contact_channel_translations")
+}
+
+model ContactChannelType {
+  code            String           @id
+  icon            String?
+  sortOrder       Int              @default(0) @db.SmallInt @map("sort_order")
+  contactChannels ContactChannel[]
+
+  @@map("contact_channel_types")
+}
+
+model ContactChannel {
+  id                         BigInt                      @id @default(autoincrement())
+  channelTypeCode            String                      @map("channel_type_code")
+  value                      String
+  isPublic                   Boolean                     @default(true) @map("is_public")
+  isPrimary                  Boolean                     @default(false) @map("is_primary")
+  sortOrder                  Int                         @default(0) @db.SmallInt @map("sort_order")
+  isActive                   Boolean                     @default(true) @map("is_active")
+  contactChannelTranslations ContactChannelTranslation[]
+  channelType                ContactChannelType          @relation(fields: [channelTypeCode], references: [code], onDelete: NoAction)
+
+  @@map("contact_channels")
+}
+
+model ContactMessageStatus {
+  code            String           @id
+  sortOrder       Int              @default(0) @db.SmallInt @map("sort_order")
+  contactMessages ContactMessage[]
+
+  @@map("contact_message_statuses")
+}
+
+model ContactMessage {
+  id              BigInt               @id @default(autoincrement())
+  uid             String               @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name            String
+  phone           String
+  email           String?
+  message         String
+  localeCode      String?              @map("locale_code")
+  statusCode      String               @default("new") @map("status_code")
+  ipHash          String?              @map("ip_hash")
+  userAgent       String?              @map("user_agent")
+  consentGivenAt  DateTime             @default(now()) @db.Timestamptz(6) @map("consent_given_at")
+  submittedAt     DateTime             @default(now()) @db.Timestamptz(6) @map("submitted_at")
+  readAt          DateTime?            @db.Timestamptz(6) @map("read_at")
+  readByUserId    BigInt?              @map("read_by_user_id")
+  deletedAt       DateTime?            @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId BigInt?              @map("deleted_by_user_id")
+  purgeAfter      DateTime?            @default(dbgenerated("(((submitted_at AT TIME ZONE 'Asia/Dhaka'::text) + '1 year'::interval))::date")) @db.Date @map("purge_after") @ignore
+  deletedBy       User?                @relation("ContactMessageDeletedBy", fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  locale          Locale?              @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  readBy          User?                @relation("ContactMessageReadBy", fields: [readByUserId], references: [id], onUpdate: NoAction)
+  status          ContactMessageStatus @relation(fields: [statusCode], references: [code], onDelete: NoAction)
+
+  @@index([purgeAfter], map: "ix_contact_purge")
+  @@map("contact_messages")
+}
+
+model ContentStatus {
+  code      String    @id
+  isPublic  Boolean   @default(false) @map("is_public")
+  sortOrder Int       @default(0) @db.SmallInt @map("sort_order")
+  faculty   Faculty[]
+  notices   Notice[]
+
+  @@map("content_statuses")
+}
+
+model DesignationTranslation {
+  designationId BigInt      @map("designation_id")
+  localeCode    String      @map("locale_code")
+  name          String
+  designation   Designation @relation(fields: [designationId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale        Locale      @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([designationId, localeCode])
+  @@map("designation_translations")
+}
+
+model Designation {
+  id                      BigInt                   @id @default(autoincrement())
+  code                    String                   @unique
+  sortOrder               Int                      @default(0) @db.SmallInt @map("sort_order")
+  isActive                Boolean                  @default(true) @map("is_active")
+  designationTranslations DesignationTranslation[]
+  faculty                 Faculty[]
+
+  @@map("designations")
+}
+
+model ExamTermTranslation {
+  examTermId BigInt   @map("exam_term_id")
+  localeCode String   @map("locale_code")
+  name       String
+  examTerm   ExamTerm @relation(fields: [examTermId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale     Locale   @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([examTermId, localeCode])
+  @@map("exam_term_translations")
+}
+
+model ExamTerm {
+  id                   BigInt                @id @default(autoincrement())
+  academicYearId       BigInt                @map("academic_year_id")
+  code                 String
+  sortOrder            Int                   @default(0) @db.SmallInt @map("sort_order")
+  isActive             Boolean               @default(true) @map("is_active")
+  examTermTranslations ExamTermTranslation[]
+  academicYear         AcademicYear          @relation(fields: [academicYearId], references: [id], onUpdate: NoAction)
+  exams                Exam[]
+
+  @@unique([academicYearId, code])
+  @@map("exam_terms")
+}
+
+model ExamTranslation {
+  examId     BigInt  @map("exam_id")
+  localeCode String  @map("locale_code")
+  note       String?
+  exam       Exam    @relation(fields: [examId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale     Locale  @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([examId, localeCode])
+  @@map("exam_translations")
+}
+
+model Exam {
+  id               BigInt            @id @default(autoincrement())
+  examTermId       BigInt            @map("exam_term_id")
+  classGradeId     BigInt            @map("class_grade_id")
+  subjectId        BigInt?           @map("subject_id")
+  examDate         DateTime          @db.Date @map("exam_date")
+  startsAt         DateTime?         @db.Time(6) @map("starts_at")
+  endsAt           DateTime?         @db.Time(6) @map("ends_at")
+  isActive         Boolean           @default(true) @map("is_active")
+  deletedAt        DateTime?         @db.Timestamptz(6) @map("deleted_at")
+  examTranslations ExamTranslation[]
+  classGrade       ClassGrade        @relation(fields: [classGradeId], references: [id], onUpdate: NoAction)
+  examTerm         ExamTerm          @relation(fields: [examTermId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subject          Subject?          @relation(fields: [subjectId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@map("exams")
+}
+
+model Faculty {
+  id                      BigInt                   @id @default(autoincrement())
+  uid                     String                   @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                  BigInt?                  @unique @map("user_id")
+  employeeCode            String?                  @unique @map("employee_code")
+  designationId           BigInt                   @map("designation_id")
+  photoMediaId            BigInt?                  @map("photo_media_id")
+  experienceYears         Int?                     @db.SmallInt @map("experience_years")
+  joinedOn                DateTime?                @db.Date @map("joined_on")
+  publishConsentAt        DateTime?                @db.Timestamptz(6) @map("publish_consent_at")
+  photoConsentAt          DateTime?                @db.Timestamptz(6) @map("photo_consent_at")
+  statusCode              String                   @default("draft") @map("status_code")
+  sortOrder               Int                      @default(0) @db.SmallInt @map("sort_order")
+  createdAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("updated_at")
+  deletedAt               DateTime?                @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId         BigInt?                  @map("deleted_by_user_id")
+  deletedBy               User?                    @relation("FacultyDeletedBy", fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  designation             Designation              @relation(fields: [designationId], references: [id], onUpdate: NoAction)
+  photo                   MediaAsset?              @relation(fields: [photoMediaId], references: [id], onUpdate: NoAction)
+  status                  ContentStatus            @relation(fields: [statusCode], references: [code], onDelete: NoAction)
+  user                    User?                    @relation("FacultyUser", fields: [userId], references: [id], onUpdate: NoAction)
+  facultyClassAssignments FacultyClassAssignment[]
+  facultyPrivate          FacultyPrivate?
+  facultySubjects         FacultySubject[]
+  facultyTranslations     FacultyTranslation[]
+
+  @@map("faculty")
+}
+
+model FacultyClassAssignment {
+  facultyId      BigInt       @map("faculty_id")
+  classSectionId BigInt       @map("class_section_id")
+  isClassTeacher Boolean      @default(false) @map("is_class_teacher")
+  classSection   ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  faculty        Faculty      @relation(fields: [facultyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([facultyId, classSectionId])
+  @@map("faculty_class_assignments")
+}
+
+model FacultyPrivate {
+  facultyId        BigInt   @id @map("faculty_id")
+  personalPhone    String?  @map("personal_phone")
+  personalEmail    String?  @map("personal_email")
+  emergencyContact String?  @map("emergency_contact")
+  internalNotes    String?  @map("internal_notes")
+  updatedAt        DateTime @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByUserId  BigInt?  @map("updated_by_user_id")
+  faculty          Faculty  @relation(fields: [facultyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  updatedBy        User?    @relation(fields: [updatedByUserId], references: [id], onUpdate: NoAction)
+
+  @@map("faculty_private")
+}
+
+model FacultySubject {
+  facultyId BigInt  @map("faculty_id")
+  subjectId BigInt  @map("subject_id")
+  faculty   Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  subject   Subject @relation(fields: [subjectId], references: [id], onUpdate: NoAction)
+
+  @@id([facultyId, subjectId])
+  @@map("faculty_subjects")
+}
+
+model FacultyTranslation {
+  facultyId     BigInt  @map("faculty_id")
+  localeCode    String  @map("locale_code")
+  fullName      String  @map("full_name")
+  qualification String?
+  bio           String?
+  faculty       Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale        Locale  @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([facultyId, localeCode])
+  @@index([localeCode], map: "ix_faculty_tr_locale")
+  @@map("faculty_translations")
+}
+
+model FeatureTranslation {
+  featureId   BigInt  @map("feature_id")
+  localeCode  String  @map("locale_code")
+  title       String
+  description String?
+  feature     Feature @relation(fields: [featureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale      Locale  @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([featureId, localeCode])
+  @@map("feature_translations")
+}
+
+model Feature {
+  id                  BigInt               @id @default(autoincrement())
+  icon                String?
+  mediaId             BigInt?              @map("media_id")
+  sortOrder           Int                  @default(0) @db.SmallInt @map("sort_order")
+  isActive            Boolean              @default(true) @map("is_active")
+  createdAt           DateTime             @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt           DateTime?            @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId     BigInt?              @map("deleted_by_user_id")
+  featureTranslations FeatureTranslation[]
+  deletedBy           User?                @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  media               MediaAsset?          @relation(fields: [mediaId], references: [id], onUpdate: NoAction)
+
+  @@map("features")
+}
+
+model FeeItem {
+  id             BigInt       @id @default(autoincrement())
+  feeStructureId BigInt       @map("fee_structure_id")
+  feeTypeId      BigInt       @map("fee_type_id")
+  amount         Decimal      @db.Decimal(12, 2)
+  feeStructure   FeeStructure @relation(fields: [feeStructureId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  feeType        FeeType      @relation(fields: [feeTypeId], references: [id], onUpdate: NoAction)
+
+  @@unique([feeStructureId, feeTypeId])
+  @@map("fee_items")
+}
+
+model FeeStructure {
+  id              BigInt       @id @default(autoincrement())
+  classGradeId    BigInt       @map("class_grade_id")
+  academicYearId  BigInt       @map("academic_year_id")
+  currencyCode    String       @default("BDT") @db.Char(3) @map("currency_code")
+  isActive        Boolean      @default(true) @map("is_active")
+  updatedAt       DateTime     @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByUserId BigInt?      @map("updated_by_user_id")
+  feeItems        FeeItem[]
+  academicYear    AcademicYear @relation(fields: [academicYearId], references: [id], onUpdate: NoAction)
+  classGrade      ClassGrade   @relation(fields: [classGradeId], references: [id], onUpdate: NoAction)
+  updatedBy       User?        @relation(fields: [updatedByUserId], references: [id], onUpdate: NoAction)
+
+  @@unique([classGradeId, academicYearId])
+  @@map("fee_structures")
+}
+
+model FeeTypeTranslation {
+  feeTypeId  BigInt  @map("fee_type_id")
+  localeCode String  @map("locale_code")
+  name       String
+  note       String?
+  feeType    FeeType @relation(fields: [feeTypeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale     Locale  @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([feeTypeId, localeCode])
+  @@map("fee_type_translations")
+}
+
+model FeeType {
+  id                  BigInt               @id @default(autoincrement())
+  code                String               @unique
+  isRecurringMonthly  Boolean              @default(false) @map("is_recurring_monthly")
+  isOneTime           Boolean              @default(false) @map("is_one_time")
+  sortOrder           Int                  @default(0) @db.SmallInt @map("sort_order")
+  isActive            Boolean              @default(true) @map("is_active")
+  feeItems            FeeItem[]
+  feeTypeTranslations FeeTypeTranslation[]
+
+  @@map("fee_types")
+}
+
+model GalleryAlbumTranslation {
+  galleryAlbumId BigInt       @map("gallery_album_id")
+  localeCode     String       @map("locale_code")
+  title          String
+  description    String?
+  galleryAlbum   GalleryAlbum @relation(fields: [galleryAlbumId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale         Locale       @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([galleryAlbumId, localeCode])
+  @@map("gallery_album_translations")
+}
+
+model GalleryAlbum {
+  id                       BigInt                    @id @default(autoincrement())
+  galleryCategoryId        BigInt                    @map("gallery_category_id")
+  coverMediaId             BigInt?                   @map("cover_media_id")
+  eventDate                DateTime?                 @db.Date @map("event_date")
+  sortOrder                Int                       @default(0) @db.SmallInt @map("sort_order")
+  isActive                 Boolean                   @default(true) @map("is_active")
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt                DateTime?                 @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId          BigInt?                   @map("deleted_by_user_id")
+  galleryAlbumTranslations GalleryAlbumTranslation[]
+  cover                    MediaAsset?               @relation(fields: [coverMediaId], references: [id], onUpdate: NoAction)
+  deletedBy                User?                     @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  galleryCategory          GalleryCategory           @relation(fields: [galleryCategoryId], references: [id], onUpdate: NoAction)
+  galleryPhotos            GalleryPhoto[]
+
+  @@map("gallery_albums")
+}
+
+model GalleryCategory {
+  id                          BigInt                       @id @default(autoincrement())
+  code                        String                       @unique
+  sortOrder                   Int                          @default(0) @db.SmallInt @map("sort_order")
+  isActive                    Boolean                      @default(true) @map("is_active")
+  galleryAlbums               GalleryAlbum[]
+  galleryCategoryTranslations GalleryCategoryTranslation[]
+
+  @@map("gallery_categories")
+}
+
+model GalleryCategoryTranslation {
+  galleryCategoryId BigInt          @map("gallery_category_id")
+  localeCode        String          @map("locale_code")
+  name              String
+  galleryCategory   GalleryCategory @relation(fields: [galleryCategoryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale            Locale          @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([galleryCategoryId, localeCode])
+  @@map("gallery_category_translations")
+}
+
+model GalleryPhotoTranslation {
+  galleryPhotoId BigInt       @map("gallery_photo_id")
+  localeCode     String       @map("locale_code")
+  caption        String?
+  galleryPhoto   GalleryPhoto @relation(fields: [galleryPhotoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale         Locale       @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([galleryPhotoId, localeCode])
+  @@map("gallery_photo_translations")
+}
+
+model GalleryPhoto {
+  id                       BigInt                    @id @default(autoincrement())
+  galleryAlbumId           BigInt                    @map("gallery_album_id")
+  mediaId                  BigInt                    @map("media_id")
+  subjectConsentAt         DateTime?                 @db.Timestamptz(6) @map("subject_consent_at")
+  sortOrder                Int                       @default(0) @db.SmallInt @map("sort_order")
+  isActive                 Boolean                   @default(true) @map("is_active")
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt                DateTime?                 @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId          BigInt?                   @map("deleted_by_user_id")
+  galleryPhotoTranslations GalleryPhotoTranslation[]
+  deletedBy                User?                     @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  galleryAlbum             GalleryAlbum              @relation(fields: [galleryAlbumId], references: [id], onUpdate: NoAction)
+  media                    MediaAsset                @relation(fields: [mediaId], references: [id], onUpdate: NoAction)
+
+  @@unique([galleryAlbumId, mediaId])
+  @@map("gallery_photos")
+}
+
+model GalleryVideoTranslation {
+  galleryVideoId BigInt       @map("gallery_video_id")
+  localeCode     String       @map("locale_code")
+  title          String
+  description    String?
+  galleryVideo   GalleryVideo @relation(fields: [galleryVideoId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale         Locale       @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([galleryVideoId, localeCode])
+  @@map("gallery_video_translations")
+}
+
+model GalleryVideo {
+  id                       BigInt                    @id @default(autoincrement())
+  videoProviderCode        String                    @map("video_provider_code")
+  providerVideoId          String                    @map("provider_video_id")
+  thumbnailMediaId         BigInt?                   @map("thumbnail_media_id")
+  publishedOn              DateTime?                 @db.Date @map("published_on")
+  sortOrder                Int                       @default(0) @db.SmallInt @map("sort_order")
+  isActive                 Boolean                   @default(true) @map("is_active")
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt                DateTime?                 @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId          BigInt?                   @map("deleted_by_user_id")
+  galleryVideoTranslations GalleryVideoTranslation[]
+  deletedBy                User?                     @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  thumbnail                MediaAsset?               @relation(fields: [thumbnailMediaId], references: [id], onUpdate: NoAction)
+  videoProvider            VideoProvider             @relation(fields: [videoProviderCode], references: [code], onDelete: NoAction)
+
+  @@unique([videoProviderCode, providerVideoId])
+  @@map("gallery_videos")
+}
+
+model HeroSlideTranslation {
+  heroSlideId BigInt    @map("hero_slide_id")
+  localeCode  String    @map("locale_code")
+  title       String?
+  subtitle    String?
+  ctaLabel    String?   @map("cta_label")
+  ctaUrl      String?   @map("cta_url")
+  heroSlide   HeroSlide @relation(fields: [heroSlideId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale      Locale    @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([heroSlideId, localeCode])
+  @@map("hero_slide_translations")
+}
+
+model HeroSlide {
+  id                    BigInt                 @id @default(autoincrement())
+  mediaId               BigInt                 @map("media_id")
+  sortOrder             Int                    @default(0) @db.SmallInt @map("sort_order")
+  startsAt              DateTime?              @db.Timestamptz(6) @map("starts_at")
+  endsAt                DateTime?              @db.Timestamptz(6) @map("ends_at")
+  isActive              Boolean                @default(true) @map("is_active")
+  createdAt             DateTime               @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt             DateTime?              @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId       BigInt?                @map("deleted_by_user_id")
+  heroSlideTranslations HeroSlideTranslation[]
+  deletedBy             User?                  @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  media                 MediaAsset             @relation(fields: [mediaId], references: [id], onUpdate: NoAction)
+
+  @@map("hero_slides")
+}
+
+model HomeContent {
+  id                      Int                      @id @default(1) @db.SmallInt
+  ctaUrl                  String?                  @default("/admission") @map("cta_url")
+  updatedAt               DateTime                 @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByUserId         BigInt?                  @map("updated_by_user_id")
+  updatedBy               User?                    @relation(fields: [updatedByUserId], references: [id], onUpdate: NoAction)
+  homeContentTranslations HomeContentTranslation[]
+
+  @@map("home_content")
+}
+
+model HomeContentTranslation {
+  homeContentId  Int         @db.SmallInt @map("home_content_id")
+  localeCode     String      @map("locale_code")
+  introText      String?     @map("intro_text")
+  ctaHeading     String?     @map("cta_heading")
+  ctaBody        String?     @map("cta_body")
+  ctaButtonLabel String?     @map("cta_button_label")
+  homeContent    HomeContent @relation(fields: [homeContentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  locale         Locale      @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([homeContentId, localeCode])
+  @@map("home_content_translations")
+}
+
+model Locale {
+  code                             String                            @id
+  nameNative                       String                            @map("name_native")
+  nameEn                           String                            @map("name_en")
+  direction                        String                            @default("ltr")
+  urlPrefix                        String                            @unique(map: "ux_locales_prefix") @default("") @map("url_prefix")
+  isDefault                        Boolean                           @default(false) @map("is_default")
+  isActive                         Boolean                           @default(true) @map("is_active")
+  sortOrder                        Int                               @default(0) @db.SmallInt @map("sort_order")
+  aboutContentTranslations         AboutContentTranslation[]
+  academicInfoTranslations         AcademicInfoTranslation[]
+  academicYearTranslations         AcademicYearTranslation[]
+  achievementTranslations          AchievementTranslation[]
+  actionTranslations               ActionTranslation[]
+  admissionCycleTranslations       AdmissionCycleTranslation[]
+  admissionDocumentTranslations    AdmissionDocumentTranslation[]
+  admissionEligibilityTranslations AdmissionEligibilityTranslation[]
+  admissionFaqTranslations         AdmissionFaqTranslation[]
+  admissionStepTranslations        AdmissionStepTranslation[]
+  calendarEventTranslations        CalendarEventTranslation[]
+  calendarEventTypeTranslations    CalendarEventTypeTranslation[]
+  classGradeTranslations           ClassGradeTranslation[]
+  classStageTranslations           ClassStageTranslation[]
+  committeeMemberTranslations      CommitteeMemberTranslation[]
+  contactChannelTranslations       ContactChannelTranslation[]
+  contactMessages                  ContactMessage[]
+  designationTranslations          DesignationTranslation[]
+  examTermTranslations             ExamTermTranslation[]
+  examTranslations                 ExamTranslation[]
+  facultyTranslations              FacultyTranslation[]
+  featureTranslations              FeatureTranslation[]
+  feeTypeTranslations              FeeTypeTranslation[]
+  galleryAlbumTranslations         GalleryAlbumTranslation[]
+  galleryCategoryTranslations      GalleryCategoryTranslation[]
+  galleryPhotoTranslations         GalleryPhotoTranslation[]
+  galleryVideoTranslations         GalleryVideoTranslation[]
+  heroSlideTranslations            HeroSlideTranslation[]
+  homeContentTranslations          HomeContentTranslation[]
+  mediaAssetTranslations           MediaAssetTranslation[]
+  moduleTranslations               ModuleTranslation[]
+  noticeAttachmentTranslations     NoticeAttachmentTranslation[]
+  noticeCategoryTranslations       NoticeCategoryTranslation[]
+  noticeTranslations               NoticeTranslation[]
+  pageTranslations                 PageTranslation[]
+  registrationIdTypeTranslations   RegistrationIdTypeTranslation[]
+  roleTranslations                 RoleTranslation[]
+  siteBrandingTranslations         SiteBrandingTranslation[]
+  siteSettings                     SiteSettings[]
+  siteSettingsTranslations         SiteSettingsTranslation[]
+  siteStatTranslations             SiteStatTranslation[]
+  subjectTranslations              SubjectTranslation[]
+  users                            User[]
+
+  @@map("locales")
+}
+
+model LoginAttempt {
+  id                BigInt   @id @default(autoincrement())
+  usernameAttempted String   @db.Citext @map("username_attempted")
+  ipAddress         String?  @db.Inet @map("ip_address")
+  succeeded         Boolean
+  userAgent         String?  @map("user_agent")
+  attemptedAt       DateTime @default(now()) @db.Timestamptz(6) @map("attempted_at")
+
+  @@index([ipAddress, attemptedAt(sort: Desc)], map: "ix_login_attempts_ip")
+  @@index([usernameAttempted, attemptedAt(sort: Desc)], map: "ix_login_attempts_window")
+  @@map("login_attempts")
+}
+
+model MediaAssetTranslation {
+  mediaAssetId BigInt     @map("media_asset_id")
+  localeCode   String     @map("locale_code")
+  altText      String     @map("alt_text")
+  caption      String?
+  locale       Locale     @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  mediaAsset   MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([mediaAssetId, localeCode])
+  @@map("media_asset_translations")
+}
+
+model MediaAsset {
+  id                              BigInt                  @id @default(autoincrement())
+  uid                             String                  @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  bucket                          String
+  storageKey                      String                  @unique @map("storage_key")
+  originalFilename                String?                 @map("original_filename")
+  mimeType                        String                  @map("mime_type")
+  byteSize                        BigInt                  @map("byte_size")
+  widthPx                         Int?                    @map("width_px")
+  heightPx                        Int?                    @map("height_px")
+  checksumSha256                  String                  @map("checksum_sha256")
+  uploadedByUserId                BigInt?                 @map("uploaded_by_user_id")
+  createdAt                       DateTime                @default(now()) @db.Timestamptz(6) @map("created_at")
+  deletedAt                       DateTime?               @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId                 BigInt?                 @map("deleted_by_user_id")
+  aboutContentsPrincipalPhoto     AboutContent[]          @relation("AboutContentPrincipalPhoto")
+  aboutContentsPrincipalSignature AboutContent[]          @relation("AboutContentPrincipalSignature")
+  achievements                    Achievement[]
+  admissionCycles                 AdmissionCycle[]
+  classRoutines                   ClassRoutine[]
+  committeeMembers                CommitteeMember[]
+  faculty                         Faculty[]
+  features                        Feature[]
+  galleryAlbums                   GalleryAlbum[]
+  galleryPhotos                   GalleryPhoto[]
+  galleryVideos                   GalleryVideo[]
+  heroSlides                      HeroSlide[]
+  mediaAssetTranslations          MediaAssetTranslation[]
+  deletedBy                       User?                   @relation("MediaAssetDeletedBy", fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  uploadedBy                      User?                   @relation("MediaAssetUploadedBy", fields: [uploadedByUserId], references: [id], onUpdate: NoAction)
+  mediaVariants                   MediaVariant[]
+  noticeAttachments               NoticeAttachment[]
+  pageTranslations                PageTranslation[]
+  siteBrandingsFavicon            SiteBranding[]          @relation("SiteBrandingFavicon")
+  siteBrandingsLogo               SiteBranding[]          @relation("SiteBrandingLogo")
+  siteBrandingsLogoReversed       SiteBranding[]          @relation("SiteBrandingLogoReversed")
+  siteBrandingsOgImage            SiteBranding[]          @relation("SiteBrandingOgImage")
+
+  @@index([checksumSha256], map: "ix_media_checksum")
+  @@map("media_assets")
+}
+
+model MediaVariant {
+  id           BigInt     @id @default(autoincrement())
+  mediaAssetId BigInt     @map("media_asset_id")
+  variantCode  String     @map("variant_code")
+  storageKey   String     @unique @map("storage_key")
+  mimeType     String     @map("mime_type")
+  byteSize     BigInt     @map("byte_size")
+  widthPx      Int?       @map("width_px")
+  heightPx     Int?       @map("height_px")
+  mediaAsset   MediaAsset @relation(fields: [mediaAssetId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([mediaAssetId, variantCode])
+  @@map("media_variants")
+}
+
+model ModuleAction {
+  moduleCode            String                 @map("module_code")
+  actionCode            String                 @map("action_code")
+  action                PermissionAction       @relation(fields: [actionCode], references: [code], onDelete: Cascade)
+  module                Module                 @relation(fields: [moduleCode], references: [code], onDelete: Cascade)
+  userModulePermissions UserModulePermission[]
+
+  @@id([moduleCode, actionCode])
+  @@map("module_actions")
+}
+
+model ModuleTranslation {
+  moduleCode  String  @map("module_code")
+  localeCode  String  @map("locale_code")
+  name        String
+  description String?
+  locale      Locale  @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  module      Module  @relation(fields: [moduleCode], references: [code], onDelete: Cascade)
+
+  @@id([moduleCode, localeCode])
+  @@map("module_translations")
+}
+
+model Module {
+  code                  String                 @id
+  icon                  String?
+  adminPath             String                 @map("admin_path")
+  isSuperAdminOnly      Boolean                @default(false) @map("is_super_admin_only")
+  sortOrder             Int                    @default(0) @db.SmallInt @map("sort_order")
+  isActive              Boolean                @default(true) @map("is_active")
+  activityLogs          ActivityLog[]
+  moduleActions         ModuleAction[]
+  moduleTranslations    ModuleTranslation[]
+  userModulePermissions UserModulePermission[]
+
+  @@map("modules")
+}
+
+model NoticeAttachmentTranslation {
+  noticeAttachmentId BigInt           @map("notice_attachment_id")
+  localeCode         String           @map("locale_code")
+  label              String
+  locale             Locale           @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  noticeAttachment   NoticeAttachment @relation(fields: [noticeAttachmentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([noticeAttachmentId, localeCode])
+  @@map("notice_attachment_translations")
+}
+
+model NoticeAttachment {
+  id                           BigInt                        @id @default(autoincrement())
+  noticeId                     BigInt                        @map("notice_id")
+  mediaId                      BigInt                        @map("media_id")
+  sortOrder                    Int                           @default(0) @db.SmallInt @map("sort_order")
+  noticeAttachmentTranslations NoticeAttachmentTranslation[]
+  media                        MediaAsset                    @relation(fields: [mediaId], references: [id], onUpdate: NoAction)
+  notice                       Notice                        @relation(fields: [noticeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([noticeId, mediaId])
+  @@map("notice_attachments")
+}
+
+model NoticeCategory {
+  id                         BigInt                      @id @default(autoincrement())
+  code                       String                      @unique
+  colorHex                   String?                     @map("color_hex")
+  sortOrder                  Int                         @default(0) @db.SmallInt @map("sort_order")
+  isActive                   Boolean                     @default(true) @map("is_active")
+  noticeCategoryTranslations NoticeCategoryTranslation[]
+  notices                    Notice[]
+
+  @@map("notice_categories")
+}
+
+model NoticeCategoryTranslation {
+  noticeCategoryId BigInt         @map("notice_category_id")
+  localeCode       String         @map("locale_code")
+  name             String
+  locale           Locale         @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  noticeCategory   NoticeCategory @relation(fields: [noticeCategoryId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([noticeCategoryId, localeCode])
+  @@map("notice_category_translations")
+}
+
+model NoticeTranslation {
+  noticeId   BigInt  @map("notice_id")
+  localeCode String  @map("locale_code")
+  slug       String
+  title      String
+  excerpt    String?
+  bodyHtml   String  @map("body_html")
+  locale     Locale  @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  notice     Notice  @relation(fields: [noticeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([noticeId, localeCode])
+  @@unique([localeCode, slug])
+  @@index([localeCode], map: "ix_notice_tr_locale")
+  @@map("notice_translations")
+}
+
+model Notice {
+  id                 BigInt              @id @default(autoincrement())
+  uid                String              @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  noticeCategoryId   BigInt              @map("notice_category_id")
+  statusCode         String              @default("draft") @map("status_code")
+  publishedAt        DateTime?           @db.Timestamptz(6) @map("published_at")
+  isPinned           Boolean             @default(false) @map("is_pinned")
+  authorUserId       BigInt?             @map("author_user_id")
+  publishedByUserId  BigInt?             @map("published_by_user_id")
+  createdAt          DateTime            @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt          DateTime            @default(now()) @db.Timestamptz(6) @map("updated_at")
+  deletedAt          DateTime?           @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId    BigInt?             @map("deleted_by_user_id")
+  noticeAttachments  NoticeAttachment[]
+  noticeTranslations NoticeTranslation[]
+  author             User?               @relation("NoticeAuthor", fields: [authorUserId], references: [id], onUpdate: NoAction)
+  deletedBy          User?               @relation("NoticeDeletedBy", fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  noticeCategory     NoticeCategory      @relation(fields: [noticeCategoryId], references: [id], onUpdate: NoAction)
+  publishedBy        User?               @relation("NoticePublishedBy", fields: [publishedByUserId], references: [id], onUpdate: NoAction)
+  status             ContentStatus       @relation(fields: [statusCode], references: [code], onDelete: NoAction)
+
+  @@map("notices")
+}
+
+model PageTranslation {
+  pageId          BigInt      @map("page_id")
+  localeCode      String      @map("locale_code")
+  metaTitle       String      @map("meta_title")
+  metaDescription String?     @map("meta_description")
+  heading         String?
+  ogImageMediaId  BigInt?     @map("og_image_media_id")
+  locale          Locale      @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  ogImage         MediaAsset? @relation(fields: [ogImageMediaId], references: [id], onUpdate: NoAction)
+  page            Page        @relation(fields: [pageId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([pageId, localeCode])
+  @@map("page_translations")
+}
+
+model Page {
+  id               BigInt            @id @default(autoincrement())
+  code             String            @unique
+  routePattern     String            @map("route_pattern")
+  isIndexable      Boolean           @default(true) @map("is_indexable")
+  sortOrder        Int               @default(0) @db.SmallInt @map("sort_order")
+  pageTranslations PageTranslation[]
+
+  @@map("pages")
+}
+
+model PasswordResetToken {
+  id        BigInt    @id @default(autoincrement())
+  userId    BigInt    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @db.Timestamptz(6) @map("expires_at")
+  usedAt    DateTime? @db.Timestamptz(6) @map("used_at")
+  createdIp String?   @db.Inet @map("created_ip")
+  createdAt DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("password_reset_tokens")
+}
+
+model PermissionAction {
+  code                  String                 @id
+  sortOrder             Int                    @default(0) @db.SmallInt @map("sort_order")
+  actionTranslations    ActionTranslation[]
+  moduleActions         ModuleAction[]
+  userModulePermissions UserModulePermission[]
+
+  @@map("permission_actions")
+}
+
+model RateLimitCounter {
+  bucketKey       String   @id @map("bucket_key")
+  windowStartedAt DateTime @db.Timestamptz(6) @map("window_started_at")
+  hitCount        Int      @default(0) @map("hit_count")
+  expiresAt       DateTime @db.Timestamptz(6) @map("expires_at")
+
+  @@index([expiresAt], map: "ix_rate_limit_expiry")
+  @@map("rate_limit_counters")
+}
+
+model RegistrationIdTypeTranslation {
+  registrationIdTypeCode String             @map("registration_id_type_code")
+  localeCode             String             @map("locale_code")
+  label                  String
+  registrationIdType     RegistrationIdType @relation(fields: [registrationIdTypeCode], references: [code], onDelete: Cascade, map: "registration_id_type_translation_registration_id_type_code_fkey")
+  locale                 Locale             @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+
+  @@id([registrationIdTypeCode, localeCode])
+  @@map("registration_id_type_translations")
+}
+
+model RegistrationIdType {
+  code                           String                          @id
+  sortOrder                      Int                             @default(0) @db.SmallInt @map("sort_order")
+  registrationIdTypeTranslations RegistrationIdTypeTranslation[]
+  schoolRegistrationId           SchoolRegistrationId?
+
+  @@map("registration_id_types")
+}
+
+model RoleTranslation {
+  roleCode   String @map("role_code")
+  localeCode String @map("locale_code")
+  name       String
+  locale     Locale @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  role       Role   @relation(fields: [roleCode], references: [code], onDelete: Cascade)
+
+  @@id([roleCode, localeCode])
+  @@map("role_translations")
+}
+
+model Role {
+  code             String            @id
+  isStaff          Boolean           @default(false) @map("is_staff")
+  bypassesChecks   Boolean           @default(false) @map("bypasses_checks")
+  sortOrder        Int               @default(0) @db.SmallInt @map("sort_order")
+  roleTranslations RoleTranslation[]
+  users            User[]
+
+  @@map("roles")
+}
+
+model SchoolRegistrationId {
+  registrationIdTypeCode String             @id @map("registration_id_type_code")
+  value                  String
+  isPublic               Boolean            @default(true) @map("is_public")
+  sortOrder              Int                @default(0) @db.SmallInt @map("sort_order")
+  registrationIdType     RegistrationIdType @relation(fields: [registrationIdTypeCode], references: [code], onDelete: NoAction)
+
+  @@map("school_registration_ids")
+}
+
+model Session {
+  id            BigInt    @id @default(autoincrement())
+  uid           String    @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        BigInt    @map("user_id")
+  tokenHash     String    @unique @map("token_hash")
+  ipAddress     String?   @db.Inet @map("ip_address")
+  userAgent     String?   @map("user_agent")
+  createdAt     DateTime  @default(now()) @db.Timestamptz(6) @map("created_at")
+  lastSeenAt    DateTime  @default(now()) @db.Timestamptz(6) @map("last_seen_at")
+  expiresAt     DateTime  @db.Timestamptz(6) @map("expires_at")
+  revokedAt     DateTime? @db.Timestamptz(6) @map("revoked_at")
+  revokedReason String?   @map("revoked_reason")
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("sessions")
+}
+
+model SiteBranding {
+  id                       Int                       @id @default(1) @db.SmallInt
+  logoMediaId              BigInt?                   @map("logo_media_id")
+  logoReversedMediaId      BigInt?                   @map("logo_reversed_media_id")
+  faviconMediaId           BigInt?                   @map("favicon_media_id")
+  ogImageMediaId           BigInt?                   @map("og_image_media_id")
+  updatedAt                DateTime                  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByUserId          BigInt?                   @map("updated_by_user_id")
+  favicon                  MediaAsset?               @relation("SiteBrandingFavicon", fields: [faviconMediaId], references: [id], onUpdate: NoAction)
+  logo                     MediaAsset?               @relation("SiteBrandingLogo", fields: [logoMediaId], references: [id], onUpdate: NoAction)
+  logoReversed             MediaAsset?               @relation("SiteBrandingLogoReversed", fields: [logoReversedMediaId], references: [id], onUpdate: NoAction)
+  ogImage                  MediaAsset?               @relation("SiteBrandingOgImage", fields: [ogImageMediaId], references: [id], onUpdate: NoAction)
+  updatedBy                User?                     @relation(fields: [updatedByUserId], references: [id], onUpdate: NoAction)
+  siteBrandingTranslations SiteBrandingTranslation[]
+
+  @@map("site_branding")
+}
+
+model SiteBrandingTranslation {
+  siteBrandingId  Int          @db.SmallInt @map("site_branding_id")
+  localeCode      String       @map("locale_code")
+  schoolName      String       @map("school_name")
+  schoolShortName String?      @map("school_short_name")
+  locale          Locale       @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  siteBranding    SiteBranding @relation(fields: [siteBrandingId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([siteBrandingId, localeCode])
+  @@map("site_branding_translations")
+}
+
+model SiteSettings {
+  id                       Int                       @id @default(1) @db.SmallInt
+  foundedYear              Int?                      @db.SmallInt @map("founded_year")
+  googleMapEmbedUrl        String?                   @map("google_map_embed_url")
+  latitude                 Decimal?                  @db.Decimal(9, 6)
+  longitude                Decimal?                  @db.Decimal(9, 6)
+  defaultLocaleCode        String                    @default("bn") @map("default_locale_code")
+  updatedAt                DateTime                  @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByUserId          BigInt?                   @map("updated_by_user_id")
+  defaultLocale            Locale                    @relation(fields: [defaultLocaleCode], references: [code], onDelete: NoAction)
+  updatedBy                User?                     @relation(fields: [updatedByUserId], references: [id], onUpdate: NoAction)
+  siteSettingsTranslations SiteSettingsTranslation[]
+
+  @@map("site_settings")
+}
+
+model SiteSettingsTranslation {
+  siteSettingsId Int          @db.SmallInt @map("site_settings_id")
+  localeCode     String       @map("locale_code")
+  slogan         String?
+  address        String?
+  officeHours    String?      @map("office_hours")
+  footerNote     String?      @map("footer_note")
+  locale         Locale       @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  siteSettings   SiteSettings @relation(fields: [siteSettingsId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([siteSettingsId, localeCode])
+  @@map("site_settings_translations")
+}
+
+model SiteStatTranslation {
+  siteStatId BigInt   @map("site_stat_id")
+  localeCode String   @map("locale_code")
+  label      String
+  locale     Locale   @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  siteStat   SiteStat @relation(fields: [siteStatId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([siteStatId, localeCode])
+  @@map("site_stat_translations")
+}
+
+model SiteStat {
+  id                   BigInt                @id @default(autoincrement())
+  code                 String                @unique
+  numericValue         Decimal?              @db.Decimal(12, 2) @map("numeric_value")
+  displaySuffix        String?               @map("display_suffix")
+  icon                 String?
+  verifiedOn           DateTime?             @db.Date @map("verified_on")
+  sourceNote           String?               @map("source_note")
+  sortOrder            Int                   @default(0) @db.SmallInt @map("sort_order")
+  isActive             Boolean               @default(true) @map("is_active")
+  updatedAt            DateTime              @default(now()) @db.Timestamptz(6) @map("updated_at")
+  updatedByUserId      BigInt?               @map("updated_by_user_id")
+  siteStatTranslations SiteStatTranslation[]
+  updatedBy            User?                 @relation(fields: [updatedByUserId], references: [id], onUpdate: NoAction)
+
+  @@map("site_stats")
+}
+
+model SocialLink {
+  id           BigInt         @id @default(autoincrement())
+  platformCode String         @unique @map("platform_code")
+  url          String
+  sortOrder    Int            @default(0) @db.SmallInt @map("sort_order")
+  isActive     Boolean        @default(true) @map("is_active")
+  platform     SocialPlatform @relation(fields: [platformCode], references: [code], onDelete: NoAction)
+
+  @@map("social_links")
+}
+
+model SocialPlatform {
+  code       String      @id
+  icon       String
+  sortOrder  Int         @default(0) @db.SmallInt @map("sort_order")
+  socialLink SocialLink?
+
+  @@map("social_platforms")
+}
+
+model SpecialGrant {
+  code              String             @id
+  description       String
+  userSpecialGrants UserSpecialGrant[]
+
+  @@map("special_grants")
+}
+
+model SubjectTranslation {
+  subjectId  BigInt  @map("subject_id")
+  localeCode String  @map("locale_code")
+  name       String
+  shortName  String? @map("short_name")
+  locale     Locale  @relation(fields: [localeCode], references: [code], onDelete: NoAction)
+  subject    Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([subjectId, localeCode])
+  @@map("subject_translations")
+}
+
+model Subject {
+  id                  BigInt               @id @default(autoincrement())
+  code                String               @unique
+  isActive            Boolean              @default(true) @map("is_active")
+  deletedAt           DateTime?            @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId     BigInt?              @map("deleted_by_user_id")
+  classSubjects       ClassSubject[]
+  exams               Exam[]
+  facultySubjects     FacultySubject[]
+  subjectTranslations SubjectTranslation[]
+  deletedBy           User?                @relation(fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+
+  @@map("subjects")
+}
+
+model UserModulePermission {
+  userId          BigInt           @map("user_id")
+  moduleCode      String           @map("module_code")
+  actionCode      String           @map("action_code")
+  grantedAt       DateTime         @default(now()) @db.Timestamptz(6) @map("granted_at")
+  grantedByUserId BigInt?          @map("granted_by_user_id")
+  action          PermissionAction @relation(fields: [actionCode], references: [code], onDelete: Cascade)
+  grantedBy       User?            @relation("UserModulePermissionGrantedBy", fields: [grantedByUserId], references: [id], onUpdate: NoAction)
+  moduleAction    ModuleAction     @relation(fields: [moduleCode, actionCode], references: [moduleCode, actionCode], onDelete: Cascade)
+  module          Module           @relation(fields: [moduleCode], references: [code], onDelete: Cascade)
+  user            User             @relation("UserModulePermissionUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([userId, moduleCode, actionCode])
+  @@index([userId, moduleCode, actionCode], map: "ix_perm_by_user")
+  @@map("user_module_permissions")
+}
+
+model UserSpecialGrant {
+  userId          BigInt       @map("user_id")
+  grantCode       String       @map("grant_code")
+  grantedAt       DateTime     @default(now()) @db.Timestamptz(6) @map("granted_at")
+  grantedByUserId BigInt?      @map("granted_by_user_id")
+  grant           SpecialGrant @relation(fields: [grantCode], references: [code], onDelete: Cascade)
+  grantedBy       User?        @relation("UserSpecialGrantGrantedBy", fields: [grantedByUserId], references: [id], onUpdate: NoAction)
+  user            User         @relation("UserSpecialGrantUser", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([userId, grantCode])
+  @@map("user_special_grants")
+}
+
+model User {
+  id                             BigInt                 @id @default(autoincrement())
+  uid                            String                 @unique @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  username                       String                 @db.Citext
+  email                          String?                @db.Citext
+  passwordHash                   String                 @map("password_hash")
+  displayName                    String                 @map("display_name")
+  roleCode                       String                 @map("role_code")
+  preferredLocale                String                 @default("bn") @map("preferred_locale")
+  isActive                       Boolean                @default(true) @map("is_active")
+  mustChangePassword             Boolean                @default(true) @map("must_change_password")
+  failedLoginCount               Int                    @default(0) @db.SmallInt @map("failed_login_count")
+  lockedUntil                    DateTime?              @db.Timestamptz(6) @map("locked_until")
+  lastLoginAt                    DateTime?              @db.Timestamptz(6) @map("last_login_at")
+  passwordChangedAt              DateTime?              @db.Timestamptz(6) @map("password_changed_at")
+  createdByUserId                BigInt?                @map("created_by_user_id")
+  createdAt                      DateTime               @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt                      DateTime               @default(now()) @db.Timestamptz(6) @map("updated_at")
+  deletedAt                      DateTime?              @db.Timestamptz(6) @map("deleted_at")
+  deletedByUserId                BigInt?                @map("deleted_by_user_id")
+  aboutContents                  AboutContent[]
+  academicInfos                  AcademicInfo[]
+  achievements                   Achievement[]
+  activityLogs                   ActivityLog[]
+  admissionFaqs                  AdmissionFaq[]
+  classGrades                    ClassGrade[]
+  classRoutines                  ClassRoutine[]
+  committeeMembers               CommitteeMember[]
+  contactMessagesDeletedBy       ContactMessage[]       @relation("ContactMessageDeletedBy")
+  contactMessagesReadBy          ContactMessage[]       @relation("ContactMessageReadBy")
+  facultyDeletedBy               Faculty[]              @relation("FacultyDeletedBy")
+  faculty                        Faculty?               @relation("FacultyUser")
+  facultyPrivates                FacultyPrivate[]
+  features                       Feature[]
+  feeStructures                  FeeStructure[]
+  galleryAlbums                  GalleryAlbum[]
+  galleryPhotos                  GalleryPhoto[]
+  galleryVideos                  GalleryVideo[]
+  heroSlides                     HeroSlide[]
+  homeContents                   HomeContent[]
+  mediaAssetsDeletedBy           MediaAsset[]           @relation("MediaAssetDeletedBy")
+  mediaAssetsUploadedBy          MediaAsset[]           @relation("MediaAssetUploadedBy")
+  noticesAuthor                  Notice[]               @relation("NoticeAuthor")
+  noticesDeletedBy               Notice[]               @relation("NoticeDeletedBy")
+  noticesPublishedBy             Notice[]               @relation("NoticePublishedBy")
+  passwordResetTokens            PasswordResetToken[]
+  sessions                       Session[]
+  siteBrandings                  SiteBranding[]
+  siteSettings                   SiteSettings[]
+  siteStats                      SiteStat[]
+  subjects                       Subject[]
+  userModulePermissionsGrantedBy UserModulePermission[] @relation("UserModulePermissionGrantedBy")
+  userModulePermissions          UserModulePermission[] @relation("UserModulePermissionUser")
+  userSpecialGrantsGrantedBy     UserSpecialGrant[]     @relation("UserSpecialGrantGrantedBy")
+  userSpecialGrants              UserSpecialGrant[]     @relation("UserSpecialGrantUser")
+  createdBy                      User?                  @relation("UserCreatedBy", fields: [createdByUserId], references: [id], onUpdate: NoAction)
+  usersCreatedBy                 User[]                 @relation("UserCreatedBy")
+  deletedBy                      User?                  @relation("UserDeletedBy", fields: [deletedByUserId], references: [id], onUpdate: NoAction)
+  usersDeletedBy                 User[]                 @relation("UserDeletedBy")
+  locale                         Locale                 @relation(fields: [preferredLocale], references: [code], onDelete: NoAction)
+  role                           Role                   @relation(fields: [roleCode], references: [code], onDelete: NoAction)
+
+  @@map("users")
+}
+
+model VideoProvider {
+  code             String         @id
+  embedUrlTemplate String         @map("embed_url_template")
+  isActive         Boolean        @default(true) @map("is_active")
+  galleryVideos    GalleryVideo[]
+
+  @@map("video_providers")
 }

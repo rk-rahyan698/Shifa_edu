@@ -58,7 +58,7 @@ ARCHITECTURE.md  ──▶ read ONLY the sections in the card's **Load** line
 
 ```mermaid
 graph LR
-    M0["M0 Foundation<br/>T-001…005"] --> M1["M1 Database<br/>T-010…024"]
+    M0["M0 Foundation<br/>T-001…005"] --> M1["M1 Database<br/>T-010…025"]
     M1 --> M2["M2 Policy & services<br/>T-030…038"]
     M2 --> M3["M3 Auth<br/>T-040…043"]
     M3 --> M4["M4 Admin shell<br/>T-050…052"]
@@ -288,7 +288,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-022 · Migration: indexes & partial indexes
-**Needs** T-015, T-016, T-017, T-018, T-019, T-020, T-021 · **Unlocks** T-023
+**Needs** T-015, T-016, T-017, T-018, T-019, T-020, T-021 · **Unlocks** T-025
 **Load** `ARCHITECTURE.md` §B-17
 **Start** All content migrations applied.
 **Do** Every index in §B-17 not already created inline, including the GIN full-text index on `notice_translations`.
@@ -300,7 +300,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-023 · Prisma schema mapping over the SQL
-**Needs** T-022 · **Unlocks** T-024, T-030, T-031, T-032, T-033, T-034, T-036
+**Needs** T-025 · **Unlocks** T-024, T-030, T-031, T-032, T-033, T-034, T-036
 **Load** `ARCHITECTURE.md` §B-18
 **Start** All migrations applied.
 **Do** Write `schema.prisma` models mapping onto the existing SQL with `@@map`/`@map`. Composite `@@id` on every translation model. Use `prisma db pull` as a starting point, then hand-correct naming and relations. Generate the client. Verify with `prisma migrate diff` that the schema and database agree.
@@ -320,6 +320,18 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 **Contract** Seed is safe to run any number of times.
 **Stop** **Do not seed**: `site_stats` values, sample teachers, sample notices, sample photos, committee members, achievements, fee amounts, principal's message, history, vision, mission, or an open admission banner. §B-19 lists these explicitly.
 **Verify** Running seed twice yields 14 class grades, not 28; no password literal appears in any file; `grep -ri "95%" prisma/` finds nothing.
+
+---
+
+#### T-025 · Migration: deferred integrity constraints
+**Needs** T-022 · **Unlocks** T-023
+**Load** `ARCHITECTURE.md` §B-5, §B-7, §B-8, §B-10, §B-12
+**Start** T-022 applied. Every constraint below is already declared in its Part B table definition — this card only adds it to a database built before those amendments.
+**Do** `ALTER TABLE` for each, exactly as Part B declares it: §B-5 `media_variants.byte_size` gains `CHECK (byte_size > 0)`, matching `media_assets` · §B-7 `ck_faculty_publish_consent` on `faculty` — `status_code <> 'published' OR publish_consent_at IS NOT NULL` · §B-10 `ck_committee_publish_consent` on `committee_members` — `is_active = FALSE OR publish_consent_at IS NOT NULL` · §B-10 `ck_slide_range` on `hero_slides` — `ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at` · §B-12 `ck_photo_subject_consent` on `gallery_photos` — `is_active = FALSE OR subject_consent_at IS NOT NULL` · §B-8 `class_sections` gains `UNIQUE (id, class_grade_id, academic_year_id)` and `class_routines` trades its single-column FK for `fk_routine_section` — `FOREIGN KEY (class_section_id, class_grade_id, academic_year_id) REFERENCES class_sections (id, class_grade_id, academic_year_id) ON DELETE SET NULL (class_section_id)`.
+**Files** `prisma/migrations/0015_constraints/migration.sql`
+**Contract** **Withdrawing consent unpublishes.** The three consent CHECKs mean the statement that clears a consent column must also remove the row from public view — nothing may sit published with its consent cleared. `ON DELETE SET NULL (class_section_id)` requires **PostgreSQL 15+**; the compose file pins 16.
+**Stop** Constraints only — no data repair, no application code. **Not in scope:** tying `exams.subject_id` to `class_subjects`. That needs an `academic_year_id` column on `exams` which §B-8 does not have and 3NF does not want, so it is a schema change rather than a constraint and needs a task of its own; until then it stays an admin-UI responsibility with T-111 covering it.
+**Verify** Each constraint rejects a violating row and accepts a conforming one, by transaction-and-rollback: publishing a faculty profile with `publish_consent_at` NULL fails, and so does clearing that column while the profile stays `published`; the same for an active committee member and an active gallery photo; a routine pointing at a section from another academic year fails; deleting that section nulls `class_section_id` and leaves the routine's grade and year intact.
 
 ---
 ---
@@ -553,7 +565,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-062 · Admin: About content
-**Needs** T-037, T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §B-10
+**Needs** T-037, T-038, T-051 · **Unlocks** T-113 · **Load** `ARCHITECTURE.md` §B-10
 **Do** History / vision / mission / principal's message (dual rich text) · principal photo + signature · committee CRUD (with `publish_consent_at`) · achievements CRUD.
 **Files** `src/app/admin/about/**`, `src/lib/modules/about/**`
 **Contract** A committee member without consent cannot be activated.
@@ -574,7 +586,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 **Needs** T-037, T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §B-9
 **Do** Admission cycle (open/closed, dates, banner) · steps CRUD · documents CRUD · eligibility per class · FAQs CRUD · form PDF · **fee grid** (class × fee type, add any fee type).
 **Files** `src/app/admin/admission/**`, `src/lib/modules/admission/**`
-**Contract** Fee amounts are `NUMERIC`. New charge types are added by creating a `fee_type`, never a schema change.
+**Contract** Fee amounts are `NUMERIC`. New charge types are added by creating a `fee_type`, never a schema change. **Define the admission-open expression once** — `admission_cycles.is_open` and the cycle dates are independent columns and §B-9 never combines them, so this module publishes the one expression that means "admission is open right now", the way §B-11 defines notice visibility for notices. T-084 consumes it. Never restate the combination inline.
 **Stop** Admission module only. **Verify** Adding a "Transport" fee type appears in the grid without a migration.
 
 ---
@@ -598,7 +610,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-067 · Admin: Gallery (albums, photos, videos)
-**Needs** T-037, T-038, T-051 · **Unlocks** — · **Load** `ARCHITECTURE.md` §B-12
+**Needs** T-037, T-038, T-051 · **Unlocks** T-113 · **Load** `ARCHITECTURE.md` §B-12
 **Do** Albums CRUD (category, cover, event date) · multi-photo upload into an album with per-photo caption, alt text and `subject_consent_at` · videos by provider + video id.
 **Files** `src/app/admin/gallery/**`, `src/lib/modules/gallery/**`
 **Contract** A photo always belongs to an album. Video embed URLs are derived, never stored.
@@ -689,7 +701,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 **Needs** T-016, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-9 · `PRODUCT-SPEC.md` §P-6.5
 **Do** Status banner (open/closed styling) · process stepper · eligibility table · important dates · required documents · **fee table with ৳** · form download · FAQ accordion.
 **Files** `src/app/(public)/[[...locale]]/admission/page.tsx`
-**Contract** The banner shows "open" **only** when `admission_cycles.is_open` is true and within dates. Never a hardcoded string.
+**Contract** The banner shows "open" **only** when the cycle is open *and* within dates — read through T-064's single admission-open expression, never restated here and never a hardcoded string.
 **Stop** Admission only. **Verify** With no cycle seeded, no open-admissions claim appears anywhere.
 
 ---
@@ -830,11 +842,11 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 ---
 
 #### T-113 · Content & ethics gates (placeholder, consent, stats, i18n parity, leakage)
-**Needs** T-030, T-065 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-13.3
-**Do** Automated gates: placeholder guard, statistic-verification guard, faculty consent guard, i18n key parity **including the admin namespace**, private-data leakage (static import analysis), retention-job correctness.
+**Needs** T-030, T-062, T-065, T-067 · **Unlocks** — · **Load** `ARCHITECTURE.md` §A-13.3
+**Do** Automated gates: placeholder guard, statistic-verification guard, **a consent guard covering all three consent-bearing entities** — faculty profiles (`publish_consent_at`, `photo_consent_at`), committee members (`publish_consent_at`) and gallery photos (`subject_consent_at`) — i18n key parity **including the admin namespace**, private-data leakage (static import analysis), retention-job correctness.
 **Files** `tests/gates/**`, `scripts/check-i18n-parity.ts`
-**Contract** These are ethics controls, not style checks. They block CI.
-**Stop** Gates only. **Verify** Each gate fails on a deliberately seeded violation and passes once removed. The placeholder gate is tested with **both** the canonical marker `[[CONTENT REQUIRED — DO NOT PUBLISH]]` and a deliberately malformed variant (the marker truncated before its `— DO NOT PUBLISH` suffix) — the §A-13.3 prefix match must reject both.
+**Contract** These are ethics controls, not style checks. They block CI. T-025's CHECKs are not a substitute: a CHECK sees one row's own columns, so it cannot see a publication path that renders an entity without consulting the column it guards — a preview route, an unfiltered query, an album cover, a cached page. All three consent cases are still gated here.
+**Stop** Gates only. **Verify** Each gate fails on a deliberately seeded violation and passes once removed — the consent gate is exercised once per case: an unconsented faculty profile, an unconsented committee member and an unconsented gallery photo, each reached through a public read. The placeholder gate is tested with **both** the canonical marker `[[CONTENT REQUIRED — DO NOT PUBLISH]]` and a deliberately malformed variant (the marker truncated before its `— DO NOT PUBLISH` suffix) — the §A-13.3 prefix match must reject both.
 
 ---
 

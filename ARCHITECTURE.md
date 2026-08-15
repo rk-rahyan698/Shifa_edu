@@ -1360,7 +1360,8 @@ CREATE TABLE media_variants (
     variant_code   TEXT   NOT NULL,   -- thumb_400, medium_800, original_avif…
     storage_key    TEXT   NOT NULL UNIQUE,
     mime_type      TEXT   NOT NULL,
-    byte_size      BIGINT NOT NULL,
+    -- A derivative with no bytes is a failed job, not a variant (matches media_assets)
+    byte_size      BIGINT NOT NULL CHECK (byte_size > 0),
     width_px       INTEGER,
     height_px      INTEGER,
     UNIQUE (media_asset_id, variant_code)
@@ -1529,7 +1530,10 @@ CREATE TABLE faculty (
     deleted_by_user_id  BIGINT      REFERENCES users(id) ON DELETE SET NULL,
     -- Cannot publish a photo without photo consent
     CONSTRAINT ck_faculty_photo_consent
-        CHECK (photo_media_id IS NULL OR photo_consent_at IS NOT NULL)
+        CHECK (photo_media_id IS NULL OR photo_consent_at IS NOT NULL),
+    -- Cannot publish a profile without publish consent; clearing consent unpublishes it
+    CONSTRAINT ck_faculty_publish_consent
+        CHECK (status_code <> 'published' OR publish_consent_at IS NOT NULL)
 );
 CREATE INDEX ix_faculty_public ON faculty (sort_order)
     WHERE deleted_at IS NULL AND status_code = 'published';
@@ -1637,7 +1641,9 @@ CREATE TABLE class_sections (
     name             TEXT     NOT NULL,          -- 'A', 'B'
     capacity         SMALLINT CHECK (capacity > 0),
     is_active        BOOLEAN  NOT NULL DEFAULT TRUE,
-    UNIQUE (class_grade_id, academic_year_id, name)
+    UNIQUE (class_grade_id, academic_year_id, name),
+    -- Redundant with the PK; exists only as the target of class_routines' composite FK
+    UNIQUE (id, class_grade_id, academic_year_id)
 );
 
 -- Subject master + junction. PRD §5 duplicated 'Mathematics' as a
@@ -1668,14 +1674,21 @@ CREATE TABLE class_subjects (
 CREATE TABLE class_routines (
     id                 BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     class_grade_id     BIGINT   NOT NULL REFERENCES class_grades(id)   ON DELETE RESTRICT,
-    class_section_id   BIGINT   REFERENCES class_sections(id)          ON DELETE SET NULL,
+    class_section_id   BIGINT,
     academic_year_id   BIGINT   NOT NULL REFERENCES academic_years(id) ON DELETE RESTRICT,
     media_id           BIGINT   NOT NULL REFERENCES media_assets(id)   ON DELETE RESTRICT,
     effective_from     DATE     NOT NULL DEFAULT CURRENT_DATE,
     is_current         BOOLEAN  NOT NULL DEFAULT TRUE,
     uploaded_by_user_id BIGINT  REFERENCES users(id) ON DELETE SET NULL,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at         TIMESTAMPTZ
+    deleted_at         TIMESTAMPTZ,
+    -- The section must belong to this routine's own grade and year; a section
+    -- from another year is not a routine for this one. SET NULL names its
+    -- column, so deleting a section cannot null the two NOT NULL columns (PG 15+).
+    CONSTRAINT fk_routine_section
+        FOREIGN KEY (class_section_id, class_grade_id, academic_year_id)
+        REFERENCES class_sections (id, class_grade_id, academic_year_id)
+        ON DELETE SET NULL (class_section_id)
 );
 -- Exactly one current routine per class/section/year — PRD §5 allowed
 -- unlimited duplicates with no defined "current"
@@ -1875,7 +1888,10 @@ CREATE TABLE hero_slides (
     is_active          BOOLEAN  NOT NULL DEFAULT TRUE,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at         TIMESTAMPTZ,
-    deleted_by_user_id BIGINT   REFERENCES users(id) ON DELETE SET NULL
+    deleted_by_user_id BIGINT   REFERENCES users(id) ON DELETE SET NULL,
+    -- A window that ends before it starts can never show (matches ck_event_range, ck_cycle_range)
+    CONSTRAINT ck_slide_range
+        CHECK (ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at)
 );
 CREATE TABLE hero_slide_translations (
     hero_slide_id BIGINT NOT NULL REFERENCES hero_slides(id) ON DELETE CASCADE,
@@ -1949,7 +1965,10 @@ CREATE TABLE committee_members (
     is_active          BOOLEAN  NOT NULL DEFAULT TRUE,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at         TIMESTAMPTZ,
-    deleted_by_user_id BIGINT   REFERENCES users(id) ON DELETE SET NULL
+    deleted_by_user_id BIGINT   REFERENCES users(id) ON DELETE SET NULL,
+    -- An active entry names a person publicly; clearing consent deactivates it
+    CONSTRAINT ck_committee_publish_consent
+        CHECK (is_active = FALSE OR publish_consent_at IS NOT NULL)
 );
 CREATE TABLE committee_member_translations (
     committee_member_id BIGINT NOT NULL REFERENCES committee_members(id) ON DELETE CASCADE,
@@ -2072,7 +2091,10 @@ CREATE TABLE gallery_photos (
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at         TIMESTAMPTZ,
     deleted_by_user_id BIGINT   REFERENCES users(id) ON DELETE SET NULL,
-    UNIQUE (gallery_album_id, media_id)
+    UNIQUE (gallery_album_id, media_id),
+    -- An active photo is publicly visible; clearing subject consent deactivates it
+    CONSTRAINT ck_photo_subject_consent
+        CHECK (is_active = FALSE OR subject_consent_at IS NOT NULL)
 );
 -- Caption is translatable; alt text lives on media_asset_translations
 CREATE TABLE gallery_photo_translations (

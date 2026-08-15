@@ -14,7 +14,11 @@
     "format:check": "prettier --check src next.config.js tailwind.config.ts package.json tsconfig.json",
     "db:migrate": "prisma migrate deploy",
     "db:reset": "prisma migrate reset --force",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "prisma db seed"
+  },
+  "prisma": {
+    "seed": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON prisma/seed.ts"
   },
   "postcss": {
     "plugins": {
@@ -24,6 +28,7 @@
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
+    "bcryptjs": "3.0.3",
     "next": "15.5.23",
     "react": "19.2.8",
     "react-dom": "19.2.8",

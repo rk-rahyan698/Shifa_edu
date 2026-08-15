@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-16",
-  "updated_by": "T-023",
+  "updated_by": "T-024",
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -100,7 +100,7 @@
     }
   },
   "progress": {
-    "done": 20,
+    "done": 21,
     "total": 78
   },
   "milestones": [
@@ -114,7 +114,7 @@
       "id": "M1",
       "title": "Database",
       "tasks": "T-010..T-025",
-      "done": false
+      "done": true
     },
     {
       "id": "M2",
@@ -354,7 +354,7 @@
       "needs": [
         "T-023"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-025",
@@ -1135,6 +1135,13 @@
       "by": "T-023",
       "result": "prisma/schema.prisma: 108 models mapped over the applied SQL — PascalCase via @@map, camelCase via @map, composite @@id on all 47 translation and junction models, zero enums — plus src/types/db.ts. migrate diff reports no drift; tsc clean. Deferred: Prisma warns on fk_routine_section because it cannot express ON DELETE SET NULL (class_section_id), so this FK must never be regenerated from the schema; purgeAfter is @ignore'd and needs a raw read.",
       "next": "T-024"
+    },
+    {
+      "at": "2026-08-16",
+      "task": "T-024",
+      "by": "T-024",
+      "result": "prisma/seed.ts: the nine B-19 steps, every insert ON CONFLICT DO NOTHING on a natural key. Run three times: 14 class grades, 16 [[CONTENT REQUIRED]] meta titles, one user whose password is generated at runtime, bcrypt cost 12, printed once. Added bcryptjs. features has no code column, so its natural key is the English title; module_actions has no users rows, so that grant fails closed. M1 closes. Deferred: package.json#prisma goes in Prisma 7.",
+      "next": "T-030"
     }
   ]
 }

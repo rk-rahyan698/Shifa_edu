@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-16",
-  "updated_by": "T-021",
+  "updated_by": "T-022",
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -100,7 +100,7 @@
     }
   },
   "progress": {
-    "done": 17,
+    "done": 18,
     "total": 78
   },
   "milestones": [
@@ -336,7 +336,7 @@
         "T-020",
         "T-021"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-023",
@@ -1114,6 +1114,13 @@
       "by": "T-021",
       "result": "prisma/migrations/0013_audit/migration.sql: activity_logs from §B-14 with its three indexes, actor_user_id ON DELETE SET NULL and the REVOKE — deleting the actor left the row with actor_user_id NULL and both snapshots intact. Deferred: the REVOKE is defensive only. PUBLIC holds no UPDATE/DELETE on a table by default, and the app connects as postgres, owner and superuser, which bypasses it — an ordinary role was refused. T-035 and T-123 need a least-privilege runtime role.",
       "next": "T-022"
+    },
+    {
+      "at": "2026-08-16",
+      "task": "T-022",
+      "by": "T-022",
+      "result": "prisma/migrations/0014_indexes/migration.sql: all eight §B-17 indexes, none of which existed inline, with the four public read paths partial. EXPLAIN on the notice-list query took Index Scan using ix_notices_public over 20,000 rows, and ix_notice_fts answered a search by Bitmap Index Scan. Deferred: no task builds the site search this GIN index exists for — T-086 is the nearest owner — and 'simple' stems neither locale, so Bangla and English rank alike.",
+      "next": "T-025"
     }
   ]
 }

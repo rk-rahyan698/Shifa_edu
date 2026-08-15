@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-15",
-  "updated_by": "T-011",
+  "updated_by": "T-012",
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -100,7 +100,7 @@
     }
   },
   "progress": {
-    "done": 7,
+    "done": 8,
     "total": 77
   },
   "milestones": [
@@ -240,7 +240,7 @@
       "needs": [
         "T-011"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-013",
@@ -1005,6 +1005,13 @@
       "by": "T-011",
       "result": "Identity, sessions and authorization. prisma/migrations/0003_identity/migration.sql transcribes ARCHITECTURE.md §B-4 table for table in the document's own order, which also satisfies the FK dependencies (users first, since the other six reference it). Seven tables: users, user_module_permissions (with the composite FK to module_actions(module_code, action_code) that the card names), user_special_grants, sessions, password_reset_tokens, login_attempts, rate_limit_counters, plus the six indexes §B-4 declares - ux_users_username and ux_users_email partial on deleted_at IS NULL, ix_sessions_user_live partial on revoked_at IS NULL, and the two login_attempts windows and the rate-limit expiry. No models added to schema.prisma; Prisma is mapped over this SQL in T-023. No auth code and no permission engine (T-031). Verified on a genuinely fresh database: created shifa_t011_verify, ran migrate deploy (all three migrations applied clean), exercised the constraints there, then dropped it and applied to shifa_dev with the non-destructive db:migrate. shifa_dev now holds 36 tables - 28 from T-010, these 7, and _prisma_migrations - and all seven new ones are empty. Constraint behaviour proved by transaction-and-rollback so nothing was seeded. The card's Verify both ways: granting (rahim,'home','delete') is rejected by the composite FK with 'Key (module_code, action_code)=(home, delete) is not present in table module_actions' when module_actions declares only ('home','edit'), and granting the declared ('home','edit') pair succeeds. Also proved: a second live 'RAHIM' collides on ux_users_username, which shows the index is genuinely CITEXT-cased; the same username inserts again once the first row carries deleted_at, which shows the index is genuinely partial rather than a plain unique; two live users with NULL email coexist, so the email index skips NULLs as intended; revoked_reason='because' fails the CHECK while 'password_change' passes; deleting a user cascades its permissions, grants, sessions and reset tokens to zero; an unknown role_code fails users_role_code_fkey; and the defaults land as §B-4 writes them - must_change_password TRUE, is_active TRUE, preferred_locale 'bn', failed_login_count 0, uid populated by gen_random_uuid(). Pipeline green: prisma validate, tsc --noEmit, eslint, vitest, next build. One note for T-069 and T-110. The composite FK carries ON DELETE CASCADE, so retiring a module_actions pair silently deletes every grant that referenced it - correct per §B-4 and it does keep the table consistent, but it means the admin matrix UI can drop permissions as a side effect of editing the action vocabulary, with no error shown. That deletion is not currently audited; T-035's audit writer and the T-069 matrix screen should decide whether retiring an action needs a confirmation and an audit row.",
       "next": "T-012"
+    },
+    {
+      "at": "2026-08-15",
+      "task": "T-012",
+      "by": "T-012",
+      "result": "Media assets. prisma/migrations/0004_media/migration.sql transcribes ARCHITECTURE.md §B-5 table for table in the document's own order, which also satisfies the FK dependencies (media_assets first, since the other two reference it). Three tables - media_assets, media_asset_translations, media_variants - plus the two indexes the card names: ix_media_checksum on checksum_sha256, and ix_media_live on created_at DESC partial on deleted_at IS NULL (pg_indexes confirms the WHERE clause is on the index, not just in the query). No models added to schema.prisma; Prisma is mapped over this SQL in T-023. No upload pipeline and no storage client (T-037). Verified on a genuinely fresh database: created shifa_t012_verify, ran migrate deploy (all four migrations applied clean), exercised the constraints there, then dropped it and applied to shifa_dev with the non-destructive db:migrate. shifa_dev now holds 39 tables - 28 from T-010, 7 from T-011, these 3, and _prisma_migrations - and all three new ones are empty. Constraint behaviour proved by transaction-and-rollback so nothing was seeded. The card's Verify: bucket='cdn' is rejected by media_assets_bucket_check, while 'public' and 'private' both insert. Also proved: byte_size=0 and width_px=0 fail their CHECKs; a PDF row with NULL width/height is accepted, which is what the §B-5 comment intends; storage_key is globally UNIQUE on assets and again on variants, and a variant key colliding with an existing variant key fails; two assets may share a checksum, so dedupe stays an application-level lookup over ix_media_checksum rather than a constraint; alt_text is NOT NULL, so a translation row cannot exist without accessible text; an unknown locale fails the FK, deleting a referenced locale is RESTRICTed, and renaming one cascades; variant_code is unique per asset but reusable across assets; deleting an asset cascades its translations and variants away; deleting the uploading user leaves the asset and nulls uploaded_by_user_id, so attribution loss never destroys a file row. Pipeline green: prisma validate, tsc --noEmit, eslint, vitest, next build. Two notes for T-037 and T-013. First, nothing in the schema forces a media_asset to carry a translation, so an image can be stored with no alt text in any locale; §A-10.1 makes alt text the point of the registry, but the enforcement has to live in the upload pipeline and in T-113's i18n-parity gate, not here. Second, media_variants.byte_size has no CHECK (byte_size > 0) even though media_assets does - that asymmetry is in §B-5 as written and was transcribed rather than corrected; if it should be tightened, that is a T-022 index-and-constraint pass decision, not a revision of this migration.",
+      "next": "T-013"
     }
   ]
 }

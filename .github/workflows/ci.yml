@@ -108,6 +108,6 @@ jobs:
       # If this repository is moved under an organisation the action requires a
       # GITLEAKS_LICENSE repository secret, and this step fails without one.
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

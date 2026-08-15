@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-16",
-  "updated_by": "T-022",
+  "updated_by": "T-025",
   "read_order_for_ai": [
     "1. Read THIS file only (~10KB). Do not open ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -100,7 +100,7 @@
     }
   },
   "progress": {
-    "done": 18,
+    "done": 19,
     "total": 78
   },
   "milestones": [
@@ -363,7 +363,7 @@
       "needs": [
         "T-022"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-030",
@@ -1121,6 +1121,13 @@
       "by": "T-022",
       "result": "prisma/migrations/0014_indexes/migration.sql: all eight §B-17 indexes, none of which existed inline, with the four public read paths partial. EXPLAIN on the notice-list query took Index Scan using ix_notices_public over 20,000 rows, and ix_notice_fts answered a search by Bitmap Index Scan. Deferred: no task builds the site search this GIN index exists for — T-086 is the nearest owner — and 'simple' stems neither locale, so Bangla and English rank alike.",
       "next": "T-025"
+    },
+    {
+      "at": "2026-08-16",
+      "task": "T-025",
+      "by": "T-025",
+      "result": "prisma/migrations/0015_constraints/migration.sql: the seven deferred constraints, every affected table empty so no repair was needed. Withdrawal proved to be one statement — clearing consent alone was rejected on faculty, committee members and gallery photos; clearing it together with unpublishing was accepted. A cross-year section was refused, and deleting a section nulled only class_section_id. exams.subject_id stays out of scope, as the card says.",
+      "next": "T-023"
     }
   ]
 }

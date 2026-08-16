@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-16",
-  "updated_by": "T-037",
+  "updated_by": "T-038",
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -100,7 +100,7 @@
     }
   },
   "progress": {
-    "done": 29,
+    "done": 30,
     "total": 78
   },
   "milestones": [
@@ -120,7 +120,7 @@
       "id": "M2",
       "title": "Policy & core services",
       "tasks": "T-030..T-038",
-      "done": false
+      "done": true
     },
     {
       "id": "M3",
@@ -449,7 +449,7 @@
         "T-035",
         "T-036"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-040",

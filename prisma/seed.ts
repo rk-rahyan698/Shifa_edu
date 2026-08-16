@@ -627,13 +627,27 @@ async function seedCategoryLookups(tx: Tx): Promise<void> {
 const SUPER_ADMIN_USERNAME = 'superadmin';
 
 /**
- * Creates the Super Admin if it does not exist and returns the generated
- * password, or `null` if the account was already there.
+ * Non-production only. A fixed, known password so a local login doesn't
+ * depend on capturing a one-time console line. Never used when
+ * `NODE_ENV === 'production'` — that path is untouched below.
+ */
+const DEV_SUPER_ADMIN_PASSWORD = 'Admin@12345';
+
+/**
+ * Creates the Super Admin if it does not exist and returns the password that
+ * was set, or `null` if nothing changed.
  *
- * The password is never a literal in any file (AUDIT S-12). It is generated
- * here, hashed with bcrypt at §A-9.2's cost, printed once to the console, and
- * then unrecoverable — `must_change_password` forces rotation at first login,
- * so its lifetime is one login.
+ * In production, the password is never a literal in any file (AUDIT S-12).
+ * It is generated here, hashed with bcrypt at §A-9.2's cost, printed once to
+ * the console, and then unrecoverable — `must_change_password` forces
+ * rotation at first login, so its lifetime is one login. An existing row is
+ * left alone (this file's DO NOTHING rule, see header).
+ *
+ * Outside production, the account is seeded with `DEV_SUPER_ADMIN_PASSWORD`
+ * instead, and — unlike the rest of this file — an existing row's password
+ * *is* updated to match, so the known password is always valid after a
+ * reseed. `must_change_password` is left FALSE so the fixed password logs in
+ * directly.
  *
  * `email` is deliberately NULL. Password reset needs it (§A-9.2, AUDIT S-4),
  * but inventing an address for a real school would be inventing a fact
@@ -645,18 +659,33 @@ const SUPER_ADMIN_USERNAME = 'superadmin';
  * soft delete. Without the predicate Postgres cannot match the index.
  */
 async function seedSuperAdmin(tx: Tx): Promise<string | null> {
-  const password = randomBytes(18).toString('base64url');
+  const isProduction = process.env.NODE_ENV === 'production';
+  const password = isProduction ? randomBytes(18).toString('base64url') : DEV_SUPER_ADMIN_PASSWORD;
   const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
+  const mustChangePassword = isProduction;
 
   const created = await tx.$queryRaw<IdRow[]>`
     INSERT INTO users (username, email, password_hash, display_name, role_code,
                        preferred_locale, is_active, must_change_password)
     VALUES (${SUPER_ADMIN_USERNAME}, NULL, ${passwordHash}, 'Super Admin', 'super_admin',
-            ${BN}, TRUE, TRUE)
+            ${BN}, TRUE, ${mustChangePassword})
     ON CONFLICT (username) WHERE deleted_at IS NULL DO NOTHING
     RETURNING id`;
 
-  return created.length > 0 ? password : null;
+  if (created.length > 0) {
+    return password;
+  }
+
+  if (isProduction) {
+    return null;
+  }
+
+  await tx.$executeRaw`
+    UPDATE users
+    SET password_hash = ${passwordHash}, must_change_password = FALSE
+    WHERE username = ${SUPER_ADMIN_USERNAME} AND deleted_at IS NULL`;
+
+  return password;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -938,15 +967,20 @@ async function main(): Promise<void> {
     return;
   }
 
-  // Printed once, here, and nowhere else. It is not stored, not written to a
-  // file, and not recoverable (AUDIT S-12).
+  const isProduction = process.env.NODE_ENV === 'production';
+
+  // In production this is printed once, here, and nowhere else — not stored,
+  // not written to a file, not recoverable (AUDIT S-12). Outside production
+  // it's the fixed dev password, so reprinting it on every reseed is fine.
   console.log('');
   console.log('  ┌──────────────────────────────────────────────────────────');
-  console.log('  │ SUPER ADMIN CREATED — this password is shown ONCE');
+  console.log(`  │ SUPER ADMIN ${isProduction ? 'CREATED — this password is shown ONCE' : '(dev)'}`);
   console.log(`  │   username: ${SUPER_ADMIN_USERNAME}`);
   console.log(`  │   password: ${generatedPassword}`);
-  console.log('  │ Log in, change it immediately (you will be forced to),');
-  console.log('  │ and set an email address so password reset can work.');
+  if (isProduction) {
+    console.log('  │ Log in, change it immediately (you will be forced to),');
+    console.log('  │ and set an email address so password reset can work.');
+  }
   console.log('  └──────────────────────────────────────────────────────────');
   console.log('');
 }

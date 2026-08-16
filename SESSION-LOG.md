@@ -341,3 +341,188 @@ Verified: tsc, eslint, prettier and `next build` clean, with `/admin` now appear
 **Not verified, and owed for the whole batch:** no live render against seeded data. This machine has no database — no Docker, no PostgreSQL, nothing on 5432 — so the dashboard's queries have never executed, the shell has never rendered for a real session, and the four DB-backed test files (`audit`, `mutate`, `rate-limit`, `session`) still fail at import exactly as they did before M4 began. A `.env.local` of placeholder values exists locally to let `next build` past T-003's validation; it is gitignored and holds no real credential. **A live smoke test of `/admin` against seeded permission rows is owed for T-050, T-051 and T-052 together** and should be the first thing done once a database exists.
 
 Deferred: `src/app/admin/page.tsx` re-reads the `users` row `layout.tsx` read a moment earlier — `loadPermissions` is `cache()`-memoized so the permission query is not repeated, but the row is. A request-scoped loader belongs in `src/lib/*`, outside both cards' Files lists, and is the same merge T-041's middleware note is waiting on; it now has three callers and wants a task id. Audit action and module codes render as recorded rather than translated — T-069 owns the audit screen and its vocabulary. Chrome strings in both files are inlined per locale because `src/i18n/*.json` is in neither Files list, the deferral T-040/T-042/T-043/T-050 each recorded; they want `admin.chrome` and `admin.dashboard` namespaces. The five pre-existing prettier warnings from earlier tasks were left alone.
+
+## 2026-08-17 — T-060, T-061, T-062
+
+**by:** T-062 · **next:** T-063 (batch B-2 complete; M5 continues with B-3)
+
+Batch B-2 — the three §B-10/§B-6 content modules, and the first session with a
+live database. Every DB-backed suite now runs for real: 254 tests pass, up from
+231, and the four files that had failed at import since M2 (`audit`, `mutate`,
+`rate-limit`, `session`) are green. The smoke test owed for T-050/T-051/T-052
+is still owed — see the last section.
+
+**One shared shape across all three modules,** written once per module rather
+than once overall: `read.ts` (rows → the dual-locale values the form holds),
+`schema.ts` (T-034's schemas nested under a `values` key so a save can carry the
+row's id without restating a single rule), `actions.ts` (`defineMutation` per
+write, `"use server"`), `result.ts` (a `PipelineError` converted to data). The
+duplication of `result.ts` and `panel-kit.tsx` across the three is deliberate:
+M5 opens by requiring every module to be independently shippable, and a `home`
+that stops compiling when `site-settings` is reverted is not. The shared homes —
+`src/lib/modules/result.ts` and `src/components/admin/**` — belong to no card in
+this batch.
+
+**Refusals travel as data, not as exceptions.** An error thrown across a Server
+Action boundary reaches the browser as a generic "an error occurred", with the
+stage, the status and the per-field issues stripped in production. All three
+cards' Verifies are statements about telling a 403 from a 422 from a success, so
+`runAction` converts `PipelineError` into `{ ok: false, status, stage, reason,
+issues }` and lets everything else through — an unexpected failure is not a form
+error and must not be rendered as one.
+
+### T-060 — Admin: Site Settings + protected branding
+
+`src/app/admin/site-settings/**`, `src/lib/modules/site-settings/**`: two
+visually separated panels over two tables behind two checks, plus statistics,
+contact channels, social links and registration identifiers.
+
+The card's Verify passes against the real database: an admin holding
+`site_settings:edit` and not `edit_branding` gets 403 on a school-name change
+and 200 on an address change, with the branding row read back unchanged and no
+audit row written for the refusal. §A-9.4's physical table boundary is what
+makes that true — even a bug in one action cannot write the other's table,
+because the SQL names a different one.
+
+**One documented narrowing, and it is the thing to review first.** §A-9.4 reads
+"Super Admin, *or* an admin holding `edit_branding`", while `mutate()` takes a
+module permission and an optional grant and requires **both**. A branding write
+therefore demands `site_settings:edit` **and** `edit_branding`. That is stricter
+than the architecture, never looser, and the alternative was to reach past
+`mutate()` — which M5's opening rule forbids and which would put a second
+authorization path in the codebase to keep in step with §A-9.3. Asserted
+explicitly in the suite so the narrowing is a decision on record rather than
+something a later reader discovers by being refused. Making the OR literal is a
+change to `mutate()`, and therefore a new card.
+
+The Contract holds in three layers: a statistic cannot be activated without
+`verified_on` at the panel (save disabled, reason stated), at the schema (422
+naming the field) and at `ck_stat_verified`. §A-3.1's point is that "95% pass
+rate" is a claim about a school, and a UI-only check would move that decision
+back into a form.
+
+**T-034's `contactChannelSchema` cannot write a contact channel's label.** It
+declares the row's own columns and stops, while `contact_channel_translations.label`
+is `NOT NULL` and is what §B-6's own example (`Principal` / `অধ্যক্ষ`) renders.
+A save built from it alone could only ever write an unlabelled channel, so the
+`translationSet` half is added on this module's wrapper schema — additively, in
+this card's Files, with T-034 untouched.
+
+**The route does not match the module registry.** This page is at
+`/admin/site-settings`, the path the card's Files list names; T-031's
+`MODULES.site_settings.adminPath` and T-036's seed both say `/admin/settings`,
+which is where the sidebar links. Both are finished tasks and a done task's
+output is not revised, so the sidebar link 404s until a new card aligns the
+three in one place. **This needs a task id before anyone demos the admin panel.**
+
+### T-061 — Admin: Home content
+
+`src/app/admin/home/**`, `src/lib/modules/home/**`: hero slides with upload,
+reorder, scheduling and activation; the intro and CTA singleton; features CRUD.
+
+The Verify passes in all three parts: a reversed running order persists across
+every row (not only the one moved), a save revalidates `/` and `/en` and tags
+`home:content` from T-036's registry, and an audit row lands for each. Reorder is
+its own action posting the complete list of ids — positions rather than deltas,
+which makes the write idempotent and means a replay lands the same order.
+
+The Contract — every uploaded image needs Bangla alt text before save — is
+enforced by `assertBanglaAltText` **inside the transaction**, against
+`media_asset_translations`, not by the upload control. A slide can name any
+`media_assets` row, including one uploaded elsewhere or seeded before the rule
+existed; a control asks, a transaction decides. Whitespace-only alt text is
+refused too, and the same check covers a feature's optional image. Bangla only,
+per §A-7.3 — demanding English would block a school office from publishing a
+photograph because nobody had written the caption yet.
+
+`feature_translations.description` is not offered. T-034 declares `title` alone,
+the column is nullable, and the card says "features CRUD" without naming it —
+left to whichever card revisits the schema rather than restating a translation
+shape that exists elsewhere.
+
+### T-062 — Admin: About content
+
+`src/app/admin/about/**`, `src/lib/modules/about/**`: history, vision, mission
+and the principal's message as dual rich text; principal photo and signature;
+committee CRUD with consent; achievements CRUD.
+
+Both halves of the Verify are asserted against what is *in the column*, not
+against what a function returned. `<script>`, an `onclick` handler, an `<iframe>`
+and a `javascript:` href all go in; the Bangla prose comes back and none of the
+four do. Markup that sanitizes to nothing lands as `NULL` rather than as an
+empty string masquerading as prose — `optionalRichText` sanitizes first and
+checks emptiness second, which is the ordering that matters.
+
+The consent gate is asserted in **both** directions. Refusing to publish someone
+with no recorded consent is the obvious case; refusing to *strip* consent from
+someone still published is the one that protects a person who withdraws it, and
+deactivating in the same save is the supported way to do so.
+
+**`committeeMemberSchema` has no `publish_consent_at`.** The column exists, it is
+the subject of `ck_committee_publish_consent`, and the card's Do line names it —
+but no T-034 schema can write it, so a save built from T-034 alone cannot satisfy
+this card at all. It is added on this module's wrapper schema with a `.refine`
+restating the database's `CHECK`, so an admin gets a 422 naming the field instead
+of a constraint violation naming a constraint. `photo_media_id` is missing from
+that schema too and is **not** added — the card does not name it and a committee
+list renders without portraits; it wants a task id. Likewise
+`achievements.media_id`: offering it would need T-061's alt-text check, and
+reaching into another module or writing a second copy are both worse than leaving
+one optional column to a later card.
+
+`DualRichText` pairs two `RichTextEditor`s rather than using `DualLocaleField`
+with `kind="richtext"`, which renders raw HTML in a textarea. The §A-7.3 policy
+is unchanged — it comes from `dualLocaleStatus(value, "richtext")`, the same
+single implementation every other field uses.
+
+### Blocking defect found in T-051 — `ImagePicker` cannot be mounted in a route
+
+`src/components/admin/ImagePicker.tsx` imports `IMAGE_MAX_BYTES` from
+`@/lib/upload`, and `@/lib/upload` imports `sharp` and `node:crypto` at module
+scope. Any route that mounts the picker fails `npm run build` with
+`UnhandledSchemeError: node:events`. It was latent because T-051's only consumer
+was `UiKitDemo`, which that card deliberately left as a component with no route;
+T-060 is the first page to import it, which is precisely the defect-surfacing
+B-1's batching rationale predicted.
+
+`src/components/admin/**` is T-051's Files list and a done task's output is not
+revised, so the fix is **reported, not applied**. Each of the three modules ships
+a `MediaField.tsx` in its own Files list instead: same props shape, same
+`POST /api/upload` endpoint (T-037 still owns MIME sniffing, the size ceiling,
+re-encoding, variants and deduplication), same Bangla-alt-text requirement.
+`IMAGE_MAX_BYTES` is mirrored as a literal, which costs at most one wasted
+request and never a wrong outcome, since the server enforces its own limit.
+
+**The fix is one line** — a locally declared constant, or a type-only import —
+and it needs a task id. Until it lands, no M5 module can use the kit's picker,
+which affects T-063 through T-067 and T-071. When it lands, the three
+`MediaField.tsx` files should be deleted and the props swapped back; they were
+kept close to `ImagePickerProps` for exactly that.
+
+### Verified, and not
+
+Verified: `tsc --noEmit`, `eslint`, `prettier --check` (on this batch's files)
+and `next build` all clean, with `/admin/site-settings`, `/admin/home` and
+`/admin/about` appearing as dynamic routes. 254 tests pass — 23 new across three
+DB-backed suites, each stating its own card's Verify and Contract and reading the
+rows back afterwards. The seeded singletons (`site_branding`, `site_settings`,
+`about_content`) are snapshotted and restored by their suites.
+
+`npm run build` needs the `.env.local` keys T-003 validates; they were supplied
+inline for the build check rather than written to a file. `npm run format:check`
+still reports five pre-existing warnings from earlier tasks (`globals.css`,
+`env.ts`, `fonts.ts`, `prisma.ts`, `types/db.ts`), left alone.
+
+**Not verified: no page has been rendered in a browser.** All three screens are
+proven at the Server Action and database layer only. The live smoke test owed for
+T-050/T-051/T-052 is now owed for these three as well, and the sidebar defect
+above means `/admin/site-settings` cannot currently be reached by clicking.
+
+Deferred, and unchanged from T-052: all three pages re-read the `users` row the
+layout already read — a request-scoped loader belongs in `src/lib/*`, which no
+card in this batch owns and which now has six callers. Chrome strings are inlined
+per screen because `src/i18n/*.json` is in no M4/M5 Files list; three more
+`copy.ts` maps now wait on that consolidation. And components under
+`src/components/**` still cannot be tested at all until
+`esbuild: { jsx: 'automatic' }` reaches `vitest.config.ts` — T-051 called that
+the highest-value follow-up in the repo, and it is still unclaimed.

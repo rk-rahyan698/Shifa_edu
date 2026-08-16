@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-17",
-  "updated_by": "T-052",
+  "updated_by": "T-062",
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -102,7 +102,7 @@
     }
   },
   "progress": {
-    "done": 37,
+    "done": 40,
     "total": 78
   },
   "milestones": [
@@ -678,7 +678,7 @@
         "T-051",
         "T-038"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-061",
@@ -689,7 +689,7 @@
         "T-038",
         "T-037"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-062",
@@ -700,7 +700,7 @@
         "T-038",
         "T-037"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-063",

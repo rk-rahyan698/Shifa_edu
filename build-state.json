@@ -14,17 +14,19 @@
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
-    "2b. Check `phase_gates`. If a gate's condition is not met, no task it guards may be selected, even if its `needs` are all done.",
-    "3. Find the first task in `tasks` with status 'todo' whose every `needs` id has status 'done'. That is the ONLY task for this session. A need with status 'awaiting_human', 'blocked' or 'superseded' does NOT count as satisfied. If no task qualifies and at least one task is 'awaiting_human', STOP and report: 'Build is waiting on human sign-off for <ids>. A human must set these to done in build-state.json before work continues.'",
-    "4. Open BUILD-TRACKER.md and read ONLY that task's card (search for its id).",
-    "5. Open ARCHITECTURE.md and read ONLY the sections listed in the card's `Load` line. Nothing else.",
-    "6. Build exactly the card's Do list. Touch only the card's Files.",
-    "7. Run the card's Verify commands. All must pass.",
-    "8. Update build-state.json: set that task to done, bump updated_at. Append a new entry to SESSION-LOG.md (a separate file) with the same short format — do not add it back into build-state.json. If that task was the LAST one in its milestone, also set that milestone's `done` to true in `milestones` — a milestone closes when every task in its range is `done`.",
-    "9. STOP. Do not begin the next task, even if it looks trivial."
+    "2b. Check `phase_gates`. If a gate's condition is not met, no task it guards may be selected. A gate that guards ANY task in a batch blocks the ENTIRE batch, even the tasks it does not name.",
+    "3. Select the session's BATCH: the first entry in `batches` that still holds at least one 'todo' task and whose every external need is 'done'. An external need is any id in the `needs` of its tasks that is not itself a member of that batch; needs internal to the batch are satisfied by building in the batch's listed order. A need with status 'awaiting_human', 'blocked' or 'superseded' does NOT count as satisfied. That batch is the ONLY scope for this session. If no batch qualifies and at least one task is 'awaiting_human', STOP and report: 'Build is waiting on human sign-off for <ids>. A human must set these to done in build-state.json before work continues.'",
+    "4. Open BUILD-TRACKER.md ONCE and read the cards for every 'todo' task in the batch, in a single pass. Nothing else.",
+    "5. Open ARCHITECTURE.md ONCE and read the UNION of those cards' `Load` lines, deduplicated, in a single pass. Nothing else. Never re-open a section already read this session — this deduplication is the entire point of batching.",
+    "6. Build the batch's tasks in their listed order. For EACH task in turn: build exactly that card's Do list, touch only that card's Files, run that card's Verify commands until all pass, then commit 'T-0XX: <title>'. Then move to the next task WITHOUT re-reading build-state.json, BUILD-TRACKER.md or ARCHITECTURE.md.",
+    "7. If a task's Verify cannot be made to pass, or it turns out unbuildable as written: set THAT task to 'blocked', fill blocked_reason, add it to blocked_on, and STOP. Tasks already committed earlier in the batch keep their 'done' status; the untouched remainder stays 'todo' and becomes the next session's batch.",
+    "8. Update build-state.json ONCE, at the batch boundary: set every task completed this session to 'done', bump updated_at and updated_by (use the last completed id), correct `progress.done`, and set `done` to true for any milestone whose every task is now 'done'. Append ONE entry to SESSION-LOG.md (a separate file) covering the whole batch, with a short subsection per task — do not add it back into build-state.json.",
+    "9. STOP at the batch boundary. Do not begin the next batch, even if it looks trivial."
   ],
   "global_rules": [
-    "ONE task per session. Never chain tasks.",
+    "ONE batch per session. Never cross a batch boundary. Batching shares the READING across a batch's tasks; it never shares their verification. Each task inside a batch still runs its own Verify to completion and still lands as its own commit, so any single module can be reverted without touching its neighbours.",
+    "A batch is a context budget, not a quota. If the remaining work will not fit in this session, finish the task in hand, write state per read_order step 8, and STOP mid-batch — an honestly short session is correct, a task compressed to fit is not. NEVER trim a card's Do list, skip a Verify, or merge two tasks' commits in order to reach the end of a batch.",
+    "Within a batch, a task may touch only its OWN card's Files — never an earlier task's output, which is still a revision under the rule below. Where two cards' Files globs overlap (e.g. T-051's `src/components/admin/**` contains T-052's `Dashboard*.tsx`), a file belongs to the task whose card names it most specifically, and the broader task must not pre-create it.",
     "Never revise a 'done' task's work. If a done task's output is wrong, add a new task with a new id and set the old one's status to 'superseded'. Additively extending a shared file (adding a script to package.json, adding a job to ci.yml, appending a section to docs/RUNBOOK.md) is NOT a revision and is allowed when that path appears in the current card's Files list.",
     "Never invent facts about the school. See ARCHITECTURE.md A-3.1. Use the literal marker [[CONTENT REQUIRED — DO NOT PUBLISH]].",
     "If a task cannot be completed as written, set status 'blocked', fill blocked_reason, add to blocked_on, and STOP.",
@@ -169,6 +171,154 @@
       "title": "Launch",
       "tasks": "T-130..T-132",
       "done": false
+    }
+  ],
+  "batching_policy": {
+    "authority": "`batches` is the only authoritative session-scope grouping. A task's membership lives here and nowhere else — task objects deliberately carry no batch field, so the two can never drift apart.",
+    "why": "The per-session cost was never the building, it was the re-reading: every session re-opened this file, hunted one card in a 63KB BUILD-TRACKER.md, and re-entered a 138KB ARCHITECTURE.md for sections it had often already read. A batch pays that cost once and amortises it across tasks that share the same sections.",
+    "grouped_by": "File-disjointness plus shared `Load` sections — NOT by milestone. A milestone is a reporting boundary; it is not evidence that its tasks are safe to build together.",
+    "sizing": "2-4 tasks where the pattern repeats and the reading overlaps. Never more: M5's twelve modules have no interdependencies at all and would batch cleanly on paper, but twelve modules of read model + UI + Server Actions + permission checks exceed one session's working context, and the failure mode is silent — cards get compressed to fit rather than the session stopping short.",
+    "always_solo": "M8 (T-110..T-114) is the verification tier for everything M4-M7 built; batching a gate alongside more building lets the same session grade its own work. M10 (T-130..T-132) is irreversible — content load, human sign-off, DNS and credential rotation. T-104 and T-123 are solo for the same reason: one cross-cutting surface each, with no second task worth the risk of rushing it. Do not 'optimise' any of these into a batch later.",
+    "on_a_blocked_task": "A batch is complete only when every task in it is 'done'. If one blocks, the batch ends at that task; the remainder stays 'todo' and is re-selected as the next session's batch."
+  },
+  "batches": [
+    {
+      "id": "B-1",
+      "m": "M4",
+      "tasks": ["T-050", "T-051", "T-052"],
+      "why": "A strict chain that is one coherent piece of work, sharing A-5.2/A-9.3/A-7.3 and design-system §5. Building T-052 in the same session is a feature, not a risk: the dashboard is the first real consumer of T-051's DataTable and PermissionGate, so it surfaces kit defects before all twelve M5 modules inherit them."
+    },
+    {
+      "id": "B-2",
+      "m": "M5",
+      "tasks": ["T-060", "T-061", "T-062"],
+      "why": "Site settings and the two §B-10 page-content modules. T-061 and T-062 load the identical section; T-060 shares the dual-locale + consent shape."
+    },
+    {
+      "id": "B-3",
+      "m": "M5",
+      "tasks": ["T-063", "T-064"],
+      "why": "The two heaviest cards in M5 — academics (§B-8) and admission/fees (§B-9) — paired alone deliberately. Both carry referential-integrity contracts (RESTRICT refusals, the single admission-open expression) that need room."
+    },
+    {
+      "id": "B-4",
+      "m": "M5",
+      "tasks": ["T-065", "T-066", "T-067"],
+      "why": "The publish-and-consent trio: faculty consent stamps, notice publish-vs-edit separation, gallery subject consent. Same gate pattern applied to §B-7, §B-11, §B-12."
+    },
+    {
+      "id": "B-5",
+      "m": "M5",
+      "tasks": ["T-068", "T-069", "T-070", "T-071"],
+      "why": "Admin plumbing over existing tables — inbox, user/permission matrix, own profile, media library. Four because three are small; T-069 carries the weight and is built first while context is freshest."
+    },
+    {
+      "id": "B-6",
+      "m": "M6",
+      "tasks": ["T-080", "T-089", "T-090"],
+      "why": "The public shell plus the two lowest-data page sets. Legal pages and error/empty/maintenance states exercise the new layout, locale routing and Bangla line-lengths without any content model in the way."
+    },
+    {
+      "id": "B-7",
+      "m": "M6",
+      "tasks": ["T-081", "T-082"],
+      "why": "Home and About — both §B-10, and both governed by the same contract that a placeholder-marked or empty section must not render at all."
+    },
+    {
+      "id": "B-8",
+      "m": "M6",
+      "tasks": ["T-083", "T-084"],
+      "why": "The public faces of B-3. Reading §B-8 and §B-9 a second time is unavoidable across sessions, but pairing these two keeps it to one re-entry instead of two."
+    },
+    {
+      "id": "B-9",
+      "m": "M6",
+      "tasks": ["T-085", "T-086", "T-087", "T-088"],
+      "why": "The four list-and-detail pages. Same read model → list → detail shape over §B-7, §B-11, §B-12, §B-13; T-088 adds the inquiry form."
+    },
+    {
+      "id": "B-10",
+      "m": "M7",
+      "tasks": ["T-100", "T-103"],
+      "why": "Metadata/hreflang/sitemap/JSON-LD and the revalidation that keeps them fresh are one surface. T-103 needs T-100 in the same head."
+    },
+    {
+      "id": "B-11",
+      "m": "M7",
+      "tasks": ["T-101", "T-102"],
+      "why": "Asset delivery: responsive images and font subsetting. Independent of B-10 and of each other, both narrow."
+    },
+    {
+      "id": "B-12",
+      "m": "M7",
+      "tasks": ["T-104"],
+      "why": "SOLO. The accessibility pass must run against the final rendered pages in both locales, after fonts and images have settled. It is a whole-site audit, not a card."
+    },
+    {
+      "id": "B-13",
+      "m": "M8",
+      "tasks": ["T-110"],
+      "why": "SOLO — verification tier. ~40 authorization cases; a session that also built something has an interest in the result."
+    },
+    {
+      "id": "B-14",
+      "m": "M8",
+      "tasks": ["T-111"],
+      "why": "SOLO — verification tier."
+    },
+    {
+      "id": "B-15",
+      "m": "M8",
+      "tasks": ["T-112"],
+      "why": "SOLO — verification tier."
+    },
+    {
+      "id": "B-16",
+      "m": "M8",
+      "tasks": ["T-113"],
+      "why": "SOLO — verification tier. The placeholder gate is the last thing standing between [[CONTENT REQUIRED — DO NOT PUBLISH]] and production."
+    },
+    {
+      "id": "B-17",
+      "m": "M8",
+      "tasks": ["T-114"],
+      "why": "SOLO — verification tier."
+    },
+    {
+      "id": "B-18",
+      "m": "M9",
+      "tasks": ["T-120", "T-121"],
+      "why": "Two scheduled jobs sharing one cron/runner setup. This batch WRITES the backup and purge jobs; it never runs the purge against real data — the restore rehearsal is T-131's, and it is human."
+    },
+    {
+      "id": "B-19",
+      "m": "M9",
+      "tasks": ["T-122", "T-124"],
+      "why": "Observability: uptime/error/auth-anomaly alerting, then the weekly freshness report that reads from it."
+    },
+    {
+      "id": "B-20",
+      "m": "M9",
+      "tasks": ["T-123"],
+      "why": "SOLO. Staging and production environments and the migration pipeline touch live infrastructure and real secrets. Nothing else shares this session."
+    },
+    {
+      "id": "B-21",
+      "m": "M10",
+      "tasks": ["T-130"],
+      "why": "SOLO — launch tier, irreversible."
+    },
+    {
+      "id": "B-22",
+      "m": "M10",
+      "tasks": ["T-131"],
+      "why": "SOLO and HUMAN-ONLY. An AI sets this to 'awaiting_human' and never to 'done'. See phase_gates.human_gates."
+    },
+    {
+      "id": "B-23",
+      "m": "M10",
+      "tasks": ["T-132"],
+      "why": "SOLO — launch tier. Domain, DNS, seed, credential rotation, handover."
     }
   ],
   "tasks": [

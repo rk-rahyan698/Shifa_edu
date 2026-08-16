@@ -8,6 +8,10 @@
  *  - **Admin request** — session cookie → `sessions.token_hash` lookup →
  *    `revoked_at IS NULL`? — and send anyone without a live session to `/login`
  *    with a `next` parameter, plus `no-store` on everything under `/admin`.
+ *    A live session that still owes the forced first rotation goes to
+ *    `/admin/change-password` and nowhere else (T-043, §A-9.2's first-login
+ *    row): the flag outranks every other admin route, so no admin action is
+ *    reachable while it is set.
  *
  * **This is a convenience redirect, not an authorization boundary** (the card's
  * Contract, and §A-9.3's model). It answers one question — *is there a live
@@ -99,6 +103,13 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
     return response;
   }
 
+  // T-043: the forced first rotation. `must_change_password` outranks every
+  // other admin route, so it is checked after the session is known to be live
+  // and before anything under `/admin` is allowed to render.
+  if (!isChangePasswordPath(pathname) && (await mustChangePassword(session.userId))) {
+    return withNoStore(NextResponse.redirect(toChangePassword(request, locale)));
+  }
+
   const response = NextResponse.next({ request: { headers } });
   return withNoStore(response);
 }
@@ -106,6 +117,53 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
 /** `/admin` and everything under it — but not `/administration`, which is a public page. */
 function isAdminPath(pathname: string): boolean {
   return pathname === "/admin" || pathname.startsWith("/admin/");
+}
+
+/**
+ * The one admin path a user with the flag set may reach.
+ *
+ * Matched as a prefix so the page's own `?error=` redirects and its Server
+ * Action POST — which posts to this same path — are not bounced back into the
+ * redirect that sent the user here, which would be an infinite loop that looks
+ * like a broken form.
+ */
+function isChangePasswordPath(pathname: string): boolean {
+  return (
+    pathname === CHANGE_PASSWORD_PATH || pathname.startsWith(`${CHANGE_PASSWORD_PATH}/`)
+  );
+}
+
+/** Where §A-9.2's first-login rotation happens (T-043). */
+const CHANGE_PASSWORD_PATH = "/admin/change-password";
+
+/**
+ * Whether this user still owes the forced rotation.
+ *
+ * A second query per admin request, which is a real cost and a deliberate one:
+ * the flag has to be read from the row rather than carried in the session,
+ * because a Super Admin resetting somebody's password sets it on the row and
+ * the effect must be immediate — a copy in a cookie or a token would keep
+ * letting them work until they happened to sign out. T-050 loads this user
+ * anyway to draw the sidebar; when it does, the two reads should become one.
+ */
+async function mustChangePassword(userId: bigint): Promise<boolean> {
+  const { prisma } = await import("@/lib/prisma");
+
+  const [row] = await prisma.$queryRaw<{ must_change_password: boolean }[]>`
+    SELECT must_change_password FROM users WHERE id = ${userId}`;
+
+  // No row means the account vanished between the session check and this one.
+  // Refusing to redirect would be the fail-open direction; the page behind this
+  // does its own check and sends them to the login page.
+  return row?.must_change_password ?? false;
+}
+
+/** The change-password URL in the request's locale. */
+function toChangePassword(request: NextRequest, locale: Locale): URL {
+  const url = request.nextUrl.clone();
+  url.pathname = localizePath(CHANGE_PASSWORD_PATH, locale);
+  url.search = "";
+  return url;
 }
 
 /**

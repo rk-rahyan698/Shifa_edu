@@ -119,3 +119,5 @@ verified as written until one exists. B-1 absorbed this because its Verifies
 were permission logic; B-2's are not.
 
 Both should be resolved before B-2 is started rather than discovered inside it.
+
+i think we finished doing

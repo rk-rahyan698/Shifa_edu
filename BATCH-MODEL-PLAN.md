@@ -43,7 +43,7 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 
 | Batch | Tasks | Description | Model | Complexity | Risk | Reason | Status |
 |---|---|---|---|---|---|---|---|
-| **B-1** | T-050 ✅, T-051, T-052 | Admin shell, shared UI kit, dashboard | **Opus** *(ran on Opus)* | High | High | The UI kit is inherited by all 12 M5 modules. `DataTable`'s server-side pagination contract and `DualLocaleField`'s BN-required/EN-optional semantics are decided once here and copied twelve times. | **In Progress** — T-050 done & verified; T-051, T-052 remain |
+| **B-1** | T-050 ✅, T-051 ✅, T-052 ✅ | Admin shell, shared UI kit, dashboard | **Opus** *(ran on Opus)* | High | High | The UI kit is inherited by all 12 M5 modules. `DataTable`'s server-side pagination contract and `DualLocaleField`'s BN-required/EN-optional semantics are decided once here and copied twelve times. | **Completed** — M4 closed |
 | **B-2** | T-060, T-061, T-062 | Site settings + branding, home, about | **Opus** | High | Medium-High | First M5 module — sets the read-model → UI → Server Action → permission → audit → revalidate pattern the rest imitate. Branding needs two separate actions with two different gates (`super_admin OR edit_branding` vs `site_settings:edit`). | Pending |
 | **B-3** | T-063, T-064 | Academics; admission & fees | **Opus** | Very High | High | The two heaviest cards. `RESTRICT` refusals must name the blocking records rather than cascade, routine upload must demote the previous `is_current`, and T-064 must publish the single admission-open expression that T-084 later consumes. | Pending |
 | **B-4** | T-065, T-066, T-067 | Faculty, notices, gallery | **Sonnet** | Medium-High | High | Pattern is established by B-2/B-3; this is CRUD plus boolean gates. Risk stays High because the gates are consent and publish rights — verify each one explicitly rather than trusting the pattern. | Pending |
@@ -95,18 +95,27 @@ exists, the contract is explicit, and verification is objective.
 - **Completed** — all tasks verified, `build-state.json` updated, awaiting or
   having received the human's single batch commit
 
-**B-1 is partially complete.** T-050 (admin layout & permission-filtered sidebar)
-is `done` and verified. T-051 and T-052 are still `todo` and are the next
-session's work — B-1 resumes rather than starts.
+**B-1 is complete and M4 is closed.** All three tasks are `done` and verified.
+The next batch is **B-2** (T-060, T-061, T-062) — the first M5 module batch.
 
-The Opus recommendation for the remainder of B-1 stands, and the reason
-sharpens now that T-050 is in: T-051 is the task the other twelve modules
-inherit, and it was deliberately not begun in a session without the budget to
-finish it.
+### Two findings from B-1 that change how later batches should be run
 
-**Environment note for whoever runs B-1 next:** verification of T-051's Verify
-criterion (`DualLocaleField` blocks save on empty Bangla) is component-level and
-needs `jsdom` plus DOM testing libraries, which `vitest.config.ts` says "a task
-that needs to render a component adds at that point" — that is a `package.json`
-change outside T-051's Files list and should be settled before the session
-starts. T-052's Verify needs a live database, which this machine does not have.
+**1. Component rendering cannot be tested in this repo yet.** `tsconfig` sets
+`jsx: preserve` for Next, so Vitest's transformer refuses every `.tsx` file —
+not just JSX assertions but *any* import from one. B-1 worked around it by
+keeping each rule in a pure `.ts` module beside its component, which is better
+design anyway, but the workaround has a ceiling: `DualLocaleField`'s `EN missing`
+badge is asserted through the state that renders it, not through the DOM.
+
+The fix is one line — `esbuild: { jsx: 'automatic' }` in `vitest.config.ts` —
+but that file belongs to T-005 and is outside every M5 card's Files list. **This
+wants its own task id before B-2 starts.** Until it lands, no component in
+`src/components/**` is testable, and B-2 through B-5 will each inherit the same
+gap while building on a kit that twelve modules depend on.
+
+**2. No database exists on this machine.** No Docker, no PostgreSQL, nothing on
+5432. Every card in M5 has a Verify that reads or writes rows, so B-2 cannot be
+verified as written until one exists. B-1 absorbed this because its Verifies
+were permission logic; B-2's are not.
+
+Both should be resolved before B-2 is started rather than discovered inside it.

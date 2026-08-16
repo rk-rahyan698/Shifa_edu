@@ -1,0 +1,217 @@
+{
+  "common": {
+    "nav": {
+      "home": "Home",
+      "about": "About",
+      "academics": "Academics",
+      "admission": "Admission",
+      "faculty": "Faculty",
+      "notices": "Notices",
+      "gallery": "Gallery",
+      "contact": "Contact"
+    },
+    "actions": {
+      "readMore": "Read more",
+      "viewAll": "View all",
+      "search": "Search",
+      "submit": "Submit",
+      "cancel": "Cancel",
+      "save": "Save",
+      "back": "Back",
+      "next": "Next",
+      "previous": "Previous",
+      "close": "Close",
+      "download": "Download",
+      "print": "Print",
+      "share": "Share"
+    },
+    "language": {
+      "bn": "বাংলা",
+      "en": "English",
+      "switch": "Change language",
+      "fallbackNotice": "This text is shown in Bangla"
+    },
+    "ui": {
+      "loading": "Loading…",
+      "skipToContent": "Skip to content",
+      "openMenu": "Open menu",
+      "closeMenu": "Close menu",
+      "updatedOn": "Updated {date}"
+    }
+  },
+  "public": {
+    "home": {
+      "latestNotices": "Latest notices",
+      "upcomingEvents": "Upcoming events",
+      "quickLinks": "Quick links",
+      "programs": "Our programmes"
+    },
+    "about": {
+      "title": "About us",
+      "history": "History",
+      "missionVision": "Mission & vision",
+      "principalMessage": "Principal's message",
+      "achievements": "Achievements"
+    },
+    "academics": {
+      "title": "Academics",
+      "classes": "Classes",
+      "subjects": "Subjects",
+      "routine": "Class routine",
+      "calendar": "Academic calendar",
+      "exams": "Examinations"
+    },
+    "admission": {
+      "title": "Admission",
+      "howToApply": "How to apply",
+      "eligibility": "Eligibility",
+      "documents": "Required documents",
+      "fees": "Fee structure",
+      "faq": "Frequently asked questions",
+      "importantDates": "Important dates"
+    },
+    "faculty": {
+      "title": "Faculty",
+      "department": "Department",
+      "designation": "Designation",
+      "allDepartments": "All departments"
+    },
+    "notices": {
+      "title": "Notices",
+      "category": "Category",
+      "publishedOn": "Published {date}",
+      "attachment": "Attachment",
+      "empty": "There are no notices yet",
+      "searchPlaceholder": "Search notices"
+    },
+    "gallery": {
+      "title": "Gallery",
+      "albums": "Albums",
+      "photos": "Photos",
+      "videos": "Videos",
+      "viewAlbum": "View album",
+      "empty": "There are no photos yet"
+    },
+    "contact": {
+      "title": "Contact",
+      "address": "Address",
+      "phone": "Phone",
+      "email": "Email",
+      "officeHours": "Office hours",
+      "formName": "Name",
+      "formEmail": "Email",
+      "formPhone": "Mobile number",
+      "formSubject": "Subject",
+      "formMessage": "Message",
+      "formSubmit": "Send message",
+      "formSuccess": "Your message has been sent"
+    },
+    "footer": {
+      "quickLinks": "Quick links",
+      "contactUs": "Contact us",
+      "followUs": "Follow us",
+      "rights": "All rights reserved",
+      "privacy": "Privacy policy",
+      "terms": "Terms of use"
+    },
+    "states": {
+      "notFoundTitle": "Page not found",
+      "notFoundBody": "The page you are looking for has moved or never existed.",
+      "errorTitle": "Something went wrong",
+      "maintenanceTitle": "Under maintenance"
+    }
+  },
+  "admin": {
+    "nav": {
+      "dashboard": "Dashboard",
+      "siteSettings": "Site settings",
+      "home": "Home content",
+      "about": "About",
+      "academics": "Academics",
+      "admission": "Admission & fees",
+      "faculty": "Faculty",
+      "notices": "Notices",
+      "gallery": "Gallery",
+      "messages": "Messages",
+      "media": "Media library",
+      "admins": "Manage admins",
+      "profile": "My profile"
+    },
+    "auth": {
+      "signIn": "Sign in",
+      "signOut": "Sign out",
+      "username": "Username",
+      "password": "Password",
+      "forgotPassword": "Forgot your password?",
+      "resetPassword": "Reset password",
+      "currentPassword": "Current password",
+      "newPassword": "New password",
+      "confirmPassword": "Confirm password"
+    },
+    "table": {
+      "search": "Search",
+      "noResults": "No results",
+      "rowsPerPage": "Rows per page",
+      "pageOf": "Page {page} of {total}",
+      "actions": "Actions",
+      "edit": "Edit",
+      "delete": "Delete",
+      "view": "View",
+      "create": "Add new",
+      "publish": "Publish",
+      "unpublish": "Unpublish"
+    },
+    "form": {
+      "required": "Required",
+      "optional": "Optional",
+      "bangla": "বাংলা",
+      "english": "English",
+      "englishMissing": "EN missing",
+      "saveChanges": "Save changes",
+      "saved": "Saved",
+      "discard": "Discard",
+      "unsavedChanges": "You have unsaved changes"
+    },
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "archived": "Archived",
+      "active": "Active",
+      "suspended": "Suspended"
+    },
+    "confirm": {
+      "deleteTitle": "Delete this?",
+      "deleteBody": "This action cannot be undone.",
+      "yes": "Yes",
+      "no": "No"
+    }
+  },
+  "errors": {
+    "validation": {
+      "required": "This field is required",
+      "invalidEmail": "Enter a valid email address",
+      "invalidPhone": "Enter a valid mobile number (01XXXXXXXXX)",
+      "invalidUrl": "Enter a valid link",
+      "tooShort": "Enter at least {min} characters",
+      "tooLong": "Enter at most {max} characters",
+      "unknownField": "An unknown field was submitted",
+      "passwordMismatch": "The passwords do not match"
+    },
+    "http": {
+      "badRequest": "The request was not valid",
+      "unauthorized": "Please sign in first",
+      "forbidden": "You do not have permission to do that",
+      "notFound": "Not found",
+      "conflict": "That record already exists",
+      "unprocessable": "The submitted data could not be validated",
+      "tooManyRequests": "Too many attempts — please try again shortly",
+      "serverError": "The server ran into a problem"
+    },
+    "generic": {
+      "unexpected": "Something unexpected happened",
+      "tryAgain": "Try again",
+      "offline": "You appear to be offline",
+      "sessionExpired": "Your session has expired — please sign in again"
+    }
+  }
+}

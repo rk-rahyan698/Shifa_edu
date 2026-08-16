@@ -183,3 +183,9 @@ prisma/schema.prisma: 108 models mapped over the applied SQL — PascalCase via 
 **by:** T-024 · **next:** T-030
 
 prisma/seed.ts: the nine B-19 steps, every insert ON CONFLICT DO NOTHING on a natural key. Run three times: 14 class grades, 16 [[CONTENT REQUIRED]] meta titles, one user whose password is generated at runtime, bcrypt cost 12, printed once. Added bcryptjs. features has no code column, so its natural key is the English title; module_actions has no users rows, so that grant fails closed. M1 closes. Deferred: package.json#prisma goes in Prisma 7.
+
+## 2026-08-16 — T-030
+
+**by:** T-030 · **next:** T-031
+
+src/lib/locale.ts, src/lib/i18n.ts, src/hooks/useLocale.ts, src/i18n/{bn,en}.json: prefix↔locale both ways ('' → bn, 'en' → en), `resolveTranslation` returning `{ value, isFallback, lang }` per §A-7.3, `t()` with a dotted key union derived from bn.json, and `LocaleLink` built with `createElement` so the file stays `.ts` and no `components/` path was needed. 31 unit tests; tsc and eslint clean. `/bn` is deliberately not a route — Bangla owns the bare namespace, so an unknown first segment is a Bangla path. Deferred: `LOCALES` is a compile-time union while `LocaleCode` stays `string`, so adding Arabic needs an `ar.json` and a deploy, not only the INSERT §B-3 promises; the language switcher and render-side sanitization are T-080's. Pre-existing prettier warnings on five tracked files from earlier tasks were left alone.

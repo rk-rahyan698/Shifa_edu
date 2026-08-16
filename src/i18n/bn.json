@@ -1,0 +1,217 @@
+{
+  "common": {
+    "nav": {
+      "home": "হোম",
+      "about": "আমাদের সম্পর্কে",
+      "academics": "একাডেমিক",
+      "admission": "ভর্তি",
+      "faculty": "শিক্ষকমণ্ডলী",
+      "notices": "নোটিশ",
+      "gallery": "গ্যালারি",
+      "contact": "যোগাযোগ"
+    },
+    "actions": {
+      "readMore": "বিস্তারিত",
+      "viewAll": "সব দেখুন",
+      "search": "খুঁজুন",
+      "submit": "জমা দিন",
+      "cancel": "বাতিল",
+      "save": "সংরক্ষণ",
+      "back": "পেছনে",
+      "next": "পরবর্তী",
+      "previous": "পূর্ববর্তী",
+      "close": "বন্ধ করুন",
+      "download": "ডাউনলোড",
+      "print": "প্রিন্ট",
+      "share": "শেয়ার"
+    },
+    "language": {
+      "bn": "বাংলা",
+      "en": "English",
+      "switch": "ভাষা পরিবর্তন",
+      "fallbackNotice": "এই লেখাটি বাংলায় দেখানো হচ্ছে"
+    },
+    "ui": {
+      "loading": "লোড হচ্ছে…",
+      "skipToContent": "মূল অংশে যান",
+      "openMenu": "মেনু খুলুন",
+      "closeMenu": "মেনু বন্ধ করুন",
+      "updatedOn": "হালনাগাদ {date}"
+    }
+  },
+  "public": {
+    "home": {
+      "latestNotices": "সাম্প্রতিক নোটিশ",
+      "upcomingEvents": "আসন্ন কর্মসূচি",
+      "quickLinks": "দ্রুত লিংক",
+      "programs": "আমাদের প্রোগ্রাম"
+    },
+    "about": {
+      "title": "আমাদের সম্পর্কে",
+      "history": "ইতিহাস",
+      "missionVision": "লক্ষ্য ও উদ্দেশ্য",
+      "principalMessage": "অধ্যক্ষের বাণী",
+      "achievements": "অর্জন"
+    },
+    "academics": {
+      "title": "একাডেমিক",
+      "classes": "শ্রেণি",
+      "subjects": "বিষয়",
+      "routine": "ক্লাস রুটিন",
+      "calendar": "শিক্ষাপঞ্জি",
+      "exams": "পরীক্ষা"
+    },
+    "admission": {
+      "title": "ভর্তি",
+      "howToApply": "আবেদনের নিয়ম",
+      "eligibility": "যোগ্যতা",
+      "documents": "প্রয়োজনীয় কাগজপত্র",
+      "fees": "ফি কাঠামো",
+      "faq": "সাধারণ জিজ্ঞাসা",
+      "importantDates": "গুরুত্বপূর্ণ তারিখ"
+    },
+    "faculty": {
+      "title": "শিক্ষকমণ্ডলী",
+      "department": "বিভাগ",
+      "designation": "পদবি",
+      "allDepartments": "সব বিভাগ"
+    },
+    "notices": {
+      "title": "নোটিশ",
+      "category": "বিভাগ",
+      "publishedOn": "প্রকাশ {date}",
+      "attachment": "সংযুক্তি",
+      "empty": "এখন কোনো নোটিশ নেই",
+      "searchPlaceholder": "নোটিশ খুঁজুন"
+    },
+    "gallery": {
+      "title": "গ্যালারি",
+      "albums": "অ্যালবাম",
+      "photos": "ছবি",
+      "videos": "ভিডিও",
+      "viewAlbum": "অ্যালবাম দেখুন",
+      "empty": "এখন কোনো ছবি নেই"
+    },
+    "contact": {
+      "title": "যোগাযোগ",
+      "address": "ঠিকানা",
+      "phone": "ফোন",
+      "email": "ইমেইল",
+      "officeHours": "অফিস সময়",
+      "formName": "নাম",
+      "formEmail": "ইমেইল",
+      "formPhone": "মোবাইল নম্বর",
+      "formSubject": "বিষয়",
+      "formMessage": "বার্তা",
+      "formSubmit": "বার্তা পাঠান",
+      "formSuccess": "আপনার বার্তা পাঠানো হয়েছে"
+    },
+    "footer": {
+      "quickLinks": "দ্রুত লিংক",
+      "contactUs": "যোগাযোগ করুন",
+      "followUs": "আমাদের অনুসরণ করুন",
+      "rights": "সর্বস্বত্ব সংরক্ষিত",
+      "privacy": "গোপনীয়তা নীতি",
+      "terms": "ব্যবহারের শর্তাবলি"
+    },
+    "states": {
+      "notFoundTitle": "পাতাটি পাওয়া যায়নি",
+      "notFoundBody": "আপনি যে পাতাটি খুঁজছেন সেটি সরানো হয়েছে বা কখনও ছিল না।",
+      "errorTitle": "কিছু একটা ভুল হয়েছে",
+      "maintenanceTitle": "রক্ষণাবেক্ষণ চলছে"
+    }
+  },
+  "admin": {
+    "nav": {
+      "dashboard": "ড্যাশবোর্ড",
+      "siteSettings": "সাইট সেটিংস",
+      "home": "হোম কনটেন্ট",
+      "about": "আমাদের সম্পর্কে",
+      "academics": "একাডেমিক",
+      "admission": "ভর্তি ও ফি",
+      "faculty": "শিক্ষকমণ্ডলী",
+      "notices": "নোটিশ",
+      "gallery": "গ্যালারি",
+      "messages": "বার্তা",
+      "media": "মিডিয়া লাইব্রেরি",
+      "admins": "অ্যাডমিন ব্যবস্থাপনা",
+      "profile": "আমার প্রোফাইল"
+    },
+    "auth": {
+      "signIn": "লগ ইন",
+      "signOut": "লগ আউট",
+      "username": "ইউজারনেম",
+      "password": "পাসওয়ার্ড",
+      "forgotPassword": "পাসওয়ার্ড ভুলে গেছেন?",
+      "resetPassword": "পাসওয়ার্ড রিসেট",
+      "currentPassword": "বর্তমান পাসওয়ার্ড",
+      "newPassword": "নতুন পাসওয়ার্ড",
+      "confirmPassword": "পাসওয়ার্ড নিশ্চিত করুন"
+    },
+    "table": {
+      "search": "খুঁজুন",
+      "noResults": "কোনো ফলাফল নেই",
+      "rowsPerPage": "প্রতি পাতায়",
+      "pageOf": "পাতা {page} / {total}",
+      "actions": "কার্যক্রম",
+      "edit": "সম্পাদনা",
+      "delete": "মুছুন",
+      "view": "দেখুন",
+      "create": "নতুন যোগ করুন",
+      "publish": "প্রকাশ করুন",
+      "unpublish": "প্রকাশ বাতিল"
+    },
+    "form": {
+      "required": "আবশ্যক",
+      "optional": "ঐচ্ছিক",
+      "bangla": "বাংলা",
+      "english": "English",
+      "englishMissing": "EN নেই",
+      "saveChanges": "পরিবর্তন সংরক্ষণ",
+      "saved": "সংরক্ষিত হয়েছে",
+      "discard": "বাতিল করুন",
+      "unsavedChanges": "সংরক্ষণ না করা পরিবর্তন রয়েছে"
+    },
+    "status": {
+      "draft": "খসড়া",
+      "published": "প্রকাশিত",
+      "archived": "আর্কাইভ",
+      "active": "সক্রিয়",
+      "suspended": "স্থগিত"
+    },
+    "confirm": {
+      "deleteTitle": "মুছে ফেলবেন?",
+      "deleteBody": "এই কাজটি ফেরানো যাবে না।",
+      "yes": "হ্যাঁ",
+      "no": "না"
+    }
+  },
+  "errors": {
+    "validation": {
+      "required": "এই ঘরটি পূরণ করুন",
+      "invalidEmail": "সঠিক ইমেইল দিন",
+      "invalidPhone": "সঠিক মোবাইল নম্বর দিন (01XXXXXXXXX)",
+      "invalidUrl": "সঠিক লিংক দিন",
+      "tooShort": "কমপক্ষে {min} অক্ষর দিন",
+      "tooLong": "সর্বোচ্চ {max} অক্ষর দেওয়া যাবে",
+      "unknownField": "অজানা তথ্য পাঠানো হয়েছে",
+      "passwordMismatch": "পাসওয়ার্ড দুটি মিলছে না"
+    },
+    "http": {
+      "badRequest": "অনুরোধটি সঠিক নয়",
+      "unauthorized": "আগে লগ ইন করুন",
+      "forbidden": "এই কাজের অনুমতি নেই",
+      "notFound": "খুঁজে পাওয়া যায়নি",
+      "conflict": "তথ্যটি ইতিমধ্যে রয়েছে",
+      "unprocessable": "তথ্য যাচাই করা যায়নি",
+      "tooManyRequests": "অনেক বেশি চেষ্টা হয়েছে, কিছুক্ষণ পরে আবার চেষ্টা করুন",
+      "serverError": "সার্ভারে সমস্যা হয়েছে"
+    },
+    "generic": {
+      "unexpected": "অপ্রত্যাশিত সমস্যা হয়েছে",
+      "tryAgain": "আবার চেষ্টা করুন",
+      "offline": "ইন্টারনেট সংযোগ নেই",
+      "sessionExpired": "সেশনের মেয়াদ শেষ, আবার লগ ইন করুন"
+    }
+  }
+}

@@ -43,7 +43,7 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 
 | Batch | Tasks | Description | Model | Complexity | Risk | Reason | Status |
 |---|---|---|---|---|---|---|---|
-| **B-1** | T-050, T-051, T-052 | Admin shell, shared UI kit, dashboard | **Opus** | High | High | The UI kit is inherited by all 12 M5 modules. `DataTable`'s server-side pagination contract and `DualLocaleField`'s BN-required/EN-optional semantics are decided once here and copied twelve times. | Pending |
+| **B-1** | T-050 ✅, T-051, T-052 | Admin shell, shared UI kit, dashboard | **Opus** *(ran on Opus)* | High | High | The UI kit is inherited by all 12 M5 modules. `DataTable`'s server-side pagination contract and `DualLocaleField`'s BN-required/EN-optional semantics are decided once here and copied twelve times. | **In Progress** — T-050 done & verified; T-051, T-052 remain |
 | **B-2** | T-060, T-061, T-062 | Site settings + branding, home, about | **Opus** | High | Medium-High | First M5 module — sets the read-model → UI → Server Action → permission → audit → revalidate pattern the rest imitate. Branding needs two separate actions with two different gates (`super_admin OR edit_branding` vs `site_settings:edit`). | Pending |
 | **B-3** | T-063, T-064 | Academics; admission & fees | **Opus** | Very High | High | The two heaviest cards. `RESTRICT` refusals must name the blocking records rather than cascade, routine upload must demote the previous `is_current`, and T-064 must publish the single admission-open expression that T-084 later consumes. | Pending |
 | **B-4** | T-065, T-066, T-067 | Faculty, notices, gallery | **Sonnet** | Medium-High | High | Pattern is established by B-2/B-3; this is CRUD plus boolean gates. Risk stays High because the gates are consent and publish rights — verify each one explicitly rather than trusting the pattern. | Pending |
@@ -95,4 +95,18 @@ exists, the contract is explicit, and verification is objective.
 - **Completed** — all tasks verified, `build-state.json` updated, awaiting or
   having received the human's single batch commit
 
-No batch has been started. The next batch is **B-1**.
+**B-1 is partially complete.** T-050 (admin layout & permission-filtered sidebar)
+is `done` and verified. T-051 and T-052 are still `todo` and are the next
+session's work — B-1 resumes rather than starts.
+
+The Opus recommendation for the remainder of B-1 stands, and the reason
+sharpens now that T-050 is in: T-051 is the task the other twelve modules
+inherit, and it was deliberately not begun in a session without the budget to
+finish it.
+
+**Environment note for whoever runs B-1 next:** verification of T-051's Verify
+criterion (`DualLocaleField` blocks save on empty Bangla) is component-level and
+needs `jsdom` plus DOM testing libraries, which `vitest.config.ts` says "a task
+that needs to render a component adds at that point" — that is a `package.json`
+change outside T-051's Files list and should be settled before the session
+starts. T-052's Verify needs a live database, which this machine does not have.

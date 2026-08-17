@@ -4,7 +4,10 @@
  * Two jobs, and §A-6's lifecycle diagram is the whole specification for both:
  *
  *  - **Public request** — resolve the locale from the path prefix, never from a
- *    cookie or `Accept-Language`, and hand it to the render as a request header.
+ *    cookie or `Accept-Language`, hand it to the render as a request header, and
+ *    rewrite the bare Bangla namespace onto the `[locale]` route segment that
+ *    serves it (T-080, ADR-005 route shape). ADR-005's URLs are unchanged by
+ *    this; see `localeRewrite` for the whole mapping.
  *  - **Admin request** — session cookie → `sessions.token_hash` lookup →
  *    `revoked_at IS NULL`? — and send anyone without a live session to `/login`
  *    with a `next` parameter, plus `no-store` on everything under `/admin`.
@@ -31,7 +34,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { clearedSessionCookieOptions, SESSION_COOKIE } from "@/lib/cookies";
-import { localizePath, resolveLocaleFromPath, type Locale } from "@/lib/locale";
+import {
+  DEFAULT_LOCALE,
+  localizePath,
+  prefixForLocale,
+  resolveLocaleFromPath,
+  type Locale,
+} from "@/lib/locale";
 import { verifySession } from "@/lib/session";
 
 /**
@@ -78,7 +87,15 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   headers.set(PATHNAME_HEADER, pathname);
 
   if (!isAdminPath(pathname)) {
-    return NextResponse.next({ request: { headers } });
+    const internal = localeRewrite(request.nextUrl.pathname);
+    if (internal === null) return NextResponse.next({ request: { headers } });
+
+    // A **rewrite**, not a redirect: the address bar keeps ADR-005's URL and the
+    // App Router is handed the segment that actually serves it. A redirect would
+    // put `/bn/notices` in the bar, which is the one URL this scheme forbids.
+    const url = request.nextUrl.clone();
+    url.pathname = internal;
+    return NextResponse.rewrite(url, { request: { headers } });
   }
 
   const token = request.cookies.get(SESSION_COOKIE)?.value ?? null;
@@ -113,6 +130,82 @@ export async function middleware(request: NextRequest): Promise<NextResponse> {
   const response = NextResponse.next({ request: { headers } });
   return withNoStore(response);
 }
+
+/**
+ * The internal path that serves a public URL, or `null` when the URL already is
+ * the internal one and needs no rewrite (T-080, ADR-005 route shape).
+ *
+ * The public site lives under a **required** `[locale]` segment, because Next
+ * 15.5 refuses child routes under an optional catch-all — see the header comment
+ * on `src/app/(public)/[locale]/layout.tsx`. ADR-005's URLs are unchanged; this
+ * function is the whole of the mapping between them and the segment:
+ *
+ * ```
+ *   /            ->  /bn                     Bangla is the unprefixed namespace
+ *   /notices     ->  /bn/notices
+ *   /en/notices  ->  null                    already internal, passed through
+ *   /bn/notices  ->  /__invalid-locale/notices   -> 404, see below
+ *   /xx/notices  ->  /bn/xx/notices          a Bangla page that does not exist
+ *   /login       ->  null                    not a localized route at all
+ * ```
+ *
+ * `/bn/*` is refused rather than served. Bangla's prefix is the empty string
+ * (`prefixForLocale('bn') === ''`), so `/bn/notices` is not a second spelling of
+ * `/notices` — it is a URL the site does not have, and rendering content there
+ * would split the same page across two indexable addresses. It cannot simply be
+ * left alone, because `bn` *is* a routed locale and would match the segment
+ * happily; so it is rewritten to a segment that is deliberately not a locale, and
+ * the layout's `isLocale` guard turns that into the 404. The decision of what
+ * counts as a locale stays in one place.
+ */
+function localeRewrite(pathname: string): string | null {
+  if (!isLocalizedPath(pathname)) return null;
+
+  const [first = ""] = pathname.replace(/^\/+/, "").split("/");
+
+  // An English URL is already the internal form.
+  if (first === prefixForLocale("en")) return null;
+
+  // `/bn/*` has no public existence. `/bn` alone included.
+  if (first === DEFAULT_LOCALE) {
+    return `/${INVALID_LOCALE_SEGMENT}${pathname.slice(DEFAULT_LOCALE.length + 1)}`;
+  }
+
+  // Everything else is Bangla, whether or not the page exists.
+  return pathname === "/" ? `/${DEFAULT_LOCALE}` : `/${DEFAULT_LOCALE}${pathname}`;
+}
+
+/**
+ * A segment that is not a routed locale, and cannot become one: `LOCALES` holds
+ * BCP-47 codes and none of them can contain an underscore. Rewriting to it is how
+ * a refused URL reaches the layout's 404 rather than a page.
+ */
+const INVALID_LOCALE_SEGMENT = "__invalid-locale";
+
+/**
+ * Whether a path belongs to the localized public site.
+ *
+ * Everything under `(public)` is localized except the auth pages, which sit
+ * beside the locale segment rather than under it: `src/app/(public)/login` and
+ * `src/app/(public)/reset-password` are single-URL routes with no `/en` twin.
+ * Rewriting `/login` to `/bn/login` would 404 a page that works today.
+ *
+ * (`/en/login` is already broken for a different reason — `toLogin` localizes the
+ * path but no English login route exists. That predates this function and is not
+ * fixed here; it is recorded in PENDING-COMMIT.md as a defect in a done task.)
+ *
+ * `/admin/*` never reaches here — the caller checks `isAdminPath` first — and
+ * `/api/*`, `_next/*` and anything with a file extension are excluded by the
+ * matcher.
+ */
+function isLocalizedPath(pathname: string): boolean {
+  return !UNLOCALIZED_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
+/** Public routes that live outside the `[locale]` segment. */
+const UNLOCALIZED_PREFIXES = ["/login", "/reset-password"] as const;
 
 /** `/admin` and everything under it — but not `/administration`, which is a public page. */
 function isAdminPath(pathname: string): boolean {

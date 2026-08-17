@@ -1241,3 +1241,219 @@ measurement the card asks for. Seventeen screens now owe a live smoke test.
 
 **The stray tracked file named `on` at the repo root** is still there, still in no
 card's Files list. Left alone again.
+
+---
+
+## 2026-08-18 — ADR-005 route shape, T-080, T-089, T-090
+
+**by:** T-090 · **next:** B-7 (T-081 Home, T-082 About)
+
+B-6 completed. The human approved the route-shape decision that blocked the
+previous session, so this one applied it, then built the batch in order.
+`blocked_on` is empty and `progress.done` is 52 / 78. M6 is not done — T-081
+through T-088 remain.
+
+### The decision, and what applying it touched
+
+**ADR-005's URLs did not change.** `/notices` is Bangla, `/en/notices` is
+English, `/bn/*` is a 404. What changed is the App Router directory that
+implements them: a **required** `[locale]` segment instead of the optional
+catch-all every M6 card named, with `src/middleware.ts` mapping the bare Bangla
+namespace onto it.
+
+Committed separately from the tasks, as `ADR-005: public routes move to a
+required [locale] segment`, so the card rewrites are reviewable on their own:
+
+- `BUILD-TRACKER.md` — the `Files` line of T-080 and T-081..T-090, eleven lines,
+  `[[...locale]]` becomes `[locale]`. T-080's card also gained a **Route shape**
+  line recording why, and its `Files` line now names `src/middleware.ts`
+  (additively) and the sanitization files the previous session had to invent a
+  home for.
+- `build-state.json` — `ADR-005_route_shape` moved to `decided_2026-08-17` with
+  the mapping written out, `blocked_on` emptied, T-080 back to `todo`.
+
+The previous session's blocked-state bookkeeping was committed first, unchanged,
+so the investigation that found the framework limit survives in history rather
+than being overwritten by its own resolution.
+
+**No done task's output was edited.** `src/middleware.ts` is T-041's and was
+extended additively — one new branch in the public path, `localeRewrite` and two
+helpers beside the existing predicates. T-041's session verification, admin
+guard, change-password redirect and `no-store` handling are untouched.
+
+### T-080 · Public layout, header, footer, language switcher
+
+A `git mv` plus a param change, as the previous session predicted. The layout's
+`params` went from `{ locale?: string[] }` to `{ locale: string }`, and
+`localeFromSegments` — thirty lines of catch-all arithmetic — was deleted in
+favour of `isLocale`. Header, Footer, LanguageSwitcher, MobileNav and the
+sanitization layer were carried over untouched; they never cared what the
+directory was called.
+
+The middleware's mapping, in full:
+
+| public URL | internal URL | this layout sees |
+|---|---|---|
+| `/` | `/bn` | `locale = 'bn'` |
+| `/notices` | `/bn/notices` | `locale = 'bn'` |
+| `/en/notices` | `/en/notices` (no rewrite) | `locale = 'en'` |
+| `/bn/notices` | `/__invalid-locale/notices` | 404 |
+| `/xx/notices` | `/bn/xx/notices` | a Bangla page that does not exist |
+| `/login` | `/login` (no rewrite) | outside the locale segment |
+
+A **rewrite**, not a redirect: the address bar keeps ADR-005's URL. `/bn/*` is
+refused rather than served because Bangla's prefix is the empty string, so
+`/bn/notices` is not a second spelling of `/notices` — it is a URL the site does
+not have, and serving content there splits one page across two indexable
+addresses. It cannot simply be left alone, since `bn` *is* a routed locale and
+would match the segment happily; so it is rewritten to a segment that is
+deliberately not a locale, and the layout's `isLocale` guard turns that into the
+404. One place decides what a locale is.
+
+`generateStaticParams` is usable again at this shape — the catch-all rejected the
+empty-prefix entry with `Requested and resolved page mismatch: //notices /notices`
+— but it is **not** wired here. §A-11's per-locale static generation is T-103's
+card. This is now unblocked for it rather than impossible.
+
+Verified against `next build` plus `next start` on a throwaway probe route, since
+T-086 does not exist yet: `/notices` 200 with `lang="bn"` and Bangla nav,
+`/en/notices` 200 with `lang="en"` and English nav, the switcher preserving the
+path in both directions, `/bn/notices` 404, `/xx/notices` 404, `/login` and
+`/reset-password` still 200, `/admin` still 307. The probe was removed before the
+commit.
+
+### T-089 · Privacy policy, terms, cookie notice
+
+`/privacy` and `/terms` in both locales, drafted from §A-16.1's inventory and
+§A-16.2's Phase 1 requirements. Both carry a `REVIEW_PENDING` banner holding the
+literal `[[CONTENT REQUIRED — DO NOT PUBLISH]]` marker: the card's Contract makes
+clearing them a **T-131** gate, so the constant is what a human flips, per
+document, once the text has been reviewed.
+
+The substance is not invented. Every inventory row is §A-16.1 verbatim, and the
+cookie section reads its facts out of the code that sets the cookie —
+`SESSION_COOKIE` for the name, `IDLE_TIMEOUT_HOURS` and `ABSOLUTE_TIMEOUT_HOURS`
+for the 8h/24h lifetimes — so the notice cannot drift from the behaviour it
+documents. What an AI cannot know carries the marker instead of a guess: the
+registered entity, the effective date, the governing law.
+
+**The cookie notice describes the cookie the site actually sets.** The card asks
+for a notice "for the language-preference cookie"; there is no such cookie and
+there is not meant to be one, because ADR-005 puts the locale in the URL and
+T-080's Contract makes the switcher two plain links. So the notice covers
+`shifa_session`, says in as many words that language lives in the address, and
+states that no analytics or advertising cookies exist. It is a notice, not a
+consent banner — a strictly necessary sign-in cookie needs no consent, and asking
+for it would train visitors to dismiss a question that was never real.
+
+Verified on a built server: all four URLs 200 in the right language, `/bn/privacy`
+404, footer links to both on every page, switcher preserving the path.
+
+### T-090 · 404, error, empty & maintenance states
+
+`not-found.tsx` renders both locales side by side. That is not a hedge: Next gives
+`not-found.tsx` no params — in the general case there was no match to take them
+from — and a mistyped or stale URL carries no reliable signal about which language
+its reader wanted. Each block declares its own `lang` so a screen reader switches
+pronunciation, and the two ways home (`/` and `/en`) are the same choice the
+switcher offers.
+
+`error.tsx` is a Client Component (Next requires it for `reset`) and takes the
+locale from `useParams`, so it speaks one language. It shows `error.digest` and
+never `error.message`: a thrown message on a public page is a leak surface — a
+Prisma error carries column names — and the digest is the id already in the
+server log. `loading.tsx` is a skeleton with `aria-hidden` bars and one
+`role="status"` line, so neither audience gets the other's signal.
+
+`EmptyState` always says *what* is empty, in the page's own words;
+`public.notices.empty` and `public.gallery.empty` already exist in both locales
+for it. It renders a `p`, not a heading — an empty state injecting an `h2` would
+make the document outline depend on whether the database happens to be empty.
+
+**Two files beyond the card's Files list**, on the same reading the previous
+session applied to the sanitization layer — the Do list and Verify are
+authoritative about what gets built, and the Files list gives these nowhere to
+live:
+
+- `[locale]/[...notFound]/page.tsx`. A segment's `not-found.tsx` only catches a
+  `notFound()` raised *below* its layout; a URL matching no route renders the
+  **root** 404, outside the public shell and with no navigation, which is exactly
+  what the Verify forbids. The catch-all matches what nothing else did and throws
+  from inside the segment. Static siblings take precedence, so it never shadows a
+  real page.
+- `components/public/maintenance.{ts,test.ts}` and `MaintenanceNotice.tsx`. The
+  Do list asks for a maintenance-mode flag; the Files list names no file for it.
+
+### Known defect: the 404 is served with HTTP 200
+
+`loading.tsx` makes the whole route streamable, so Next commits the status before
+the body renders — by the time `notFound()` throws, `200 OK` has gone out. The
+*page* is right (bilingual, full navigation, `noindex` from Next itself); only the
+status line is wrong.
+
+Measured rather than assumed. With `loading.tsx` removed the same tree answers
+`/nonsense` with a real 404; restoring it returns the 200. Raising `notFound()`
+from `generateMetadata` was tried and changes nothing — metadata resolves inside
+the same streamed shell.
+
+This is **two items on one card's own Do list in conflict**, and the Verify is the
+half that mentions what the reader sees, so that is the half kept. The fix costs a
+route group — pages under `[locale]/(site)/` with `loading.tsx`, leaving the
+catch-all outside the boundary — which rewrites the Files line of T-081..T-089 and
+moves a page this batch already committed. It wants a task id.
+
+### The maintenance flag is built and tested but wired to nothing
+
+`maintenanceMode()` reads `MAINTENANCE_MODE` and only the exact word `on` enables
+it — not `true`, `1` or `yes`. A flag that takes a public website down should be
+impossible to trip by accident, and guessing wrong in the permissive direction
+hides a working site behind a maintenance screen and looks exactly like an outage.
+The parse is split into a pure `isMaintenanceOn()` and covered by 5 tests.
+
+It reads `process.env` directly, which `src/lib/env.ts` is otherwise the only
+module allowed to do — `env.ts` is T-003's file and in no M6 card's Files list, so
+this card could not add `MAINTENANCE_MODE` to its schema. Moving it later is six
+lines and one import.
+
+**Nothing renders the screen yet.** A site-wide gate belongs in the public layout
+or the middleware; the layout is T-080's file and this batch may not touch an
+earlier task's output, and the middleware is T-041's. Needs a task id.
+
+### Verification
+
+`npx tsc --noEmit`, `npx eslint .` and `npx prettier --check` clean. `npx vitest run`
+**357 passing, up from 352** — the five new ones are `maintenance.test.ts`.
+`npx next build` compiles and `next start` serves. One test run failed mid-session
+and was chased rather than waved off: it was `prettier --write` rewriting the new
+test file while vitest was importing it, and four consecutive clean runs followed.
+
+Measured on a built server: `/nonsense`, `/en/nonsense` and `/a/b/c` all show the
+bilingual 404 with working navigation and `noindex`; `/privacy` and `/en/terms`
+still resolve, so the catch-all does not shadow real pages; `MAINTENANCE_MODE=on`
+flips the flag at runtime and unset leaves it off, confirming the dynamic
+`process.env[...]` read is not inlined at build time. `EmptyState` and
+`MaintenanceNotice` were rendered through a throwaway probe — neither has a
+consumer yet, so neither would otherwise have been executed once — and the probe
+was removed before the commit.
+
+### Not verified
+
+**Still no browser.** The 360px Bangla-overflow half of T-080's Verify was not
+measured this session either; nothing changed about the components, and T-112
+still owns the first Playwright install. Twenty screens now owe a live smoke test.
+
+**`/` returns 404 until T-081.** The rewrite sends `/` to `/bn`, and
+`[locale]/page.tsx` is T-081's file which this batch must not pre-create. The
+T-001 scaffold at `src/app/page.tsx` is now unreachable and should be deleted by
+T-081.
+
+### Unchanged from earlier batches
+
+`/en/login` still 404s for an English admin whose session expires — `toLogin`
+localizes a path that has no English route. Not touched: T-033's and T-041's
+files, both done, and the new `isLocalizedPath` deliberately leaves `/login`
+alone rather than papering over it. `<html lang>` is still hardcoded `bn` in the
+root layout, flagged for T-100. The stray tracked file named `on` at the repo root
+is still there. `ImagePicker` still cannot be mounted in a route, `jsx: preserve`
+still means no `.tsx` file is testable, and `loadUser()` is still duplicated
+across ten M5 page files.

@@ -1092,3 +1092,152 @@ substitute for T-110's ~40 cases.
 
 **The stray tracked file named `on` at the repo root** is still there and still
 in no card's Files list. Left alone again.
+
+## 2026-08-17 — T-080 (blocked), T-089, T-090
+
+**by:** T-080 · **next:** human decision on `ADR-005_route_shape`, then B-6 again
+
+B-6 ended at its first task. **T-080 is `blocked` and `blocked_on` is no longer
+empty**, so no M6 task may be selected until a human resolves the decision below.
+T-089 and T-090 stay `todo`: both `need` T-080, and a `blocked` need does not
+count as satisfied. `progress.done` is unchanged at 49.
+
+### Why T-080 is blocked: the segment name in every M6 card is unbuildable
+
+Every M6 card puts its pages under `src/app/(public)/[[...locale]]/`. **Next 15.5
+cannot carry a child route under an optional catch-all.** With any nested page
+present, the router throws `Catch-all must be the last part of the URL.` for
+*every* request — `/` included — so the failure is not scoped to the public site.
+
+Verified three ways rather than assumed:
+
+1. `next dev` refuses to start at all, printing that error during route
+   collection.
+2. **`next build` misleadingly succeeds** and even lists `ƒ /[[...locale]]/notices`
+   in its route table. `next start` against that same build then answers **500**
+   for `/`, `/notices`, `/en/notices`, `/bn/notices` and `/xx/notices` alike, with
+   the same error and an `unhandledRejection` in the server log. A green build is
+   not evidence here, which is worth knowing before some later session trusts one.
+3. Deleting the child route and changing nothing else makes the identical layout
+   serve `/` with **200**. That isolates the cause to the nesting rather than to
+   anything in this card's code.
+
+`generateStaticParams` is separately unusable on the same segment: the
+empty-prefix entry an unprefixed locale needs fails with `Requested and resolved
+page mismatch: //notices /notices`, for both `{ locale: [] }` and
+`{ locale: undefined }`. So §A-11's statically generated public pages are
+unreachable at this shape too, which is T-103's problem and is recorded here
+because T-103 would otherwise rediscover it.
+
+The card's Verify cannot be made to pass as a consequence, and not for want of
+trying: `/notices` needs either a child segment (breaks the app) or
+`[[...locale]]/page.tsx`, which is T-081's file and which the file-ownership rule
+forbids this card from pre-creating.
+
+### The fix, built and confirmed — but not applied
+
+A required `[locale]` segment plus a middleware rewrite of the bare Bangla
+namespace. Stood up as a throwaway probe and measured: `/notices` **200**,
+`/en/notices` **200**, `/bn/notices` **404**, `/xx/notices` **404** — exactly
+ADR-005's semantics, with `/bn` still refused. The probe was reverted; `git diff
+src/middleware.ts` is empty.
+
+It was **not** applied, because it is not this card's to apply. It rewrites the
+`Files` line of nine cards in BUILD-TRACKER.md (T-081, T-082, T-083, T-084,
+T-085, T-086, T-087, T-088, T-089, T-090) and additively extends
+`src/middleware.ts`, which is done task T-041's output and appears in no M6
+card's Files list. Global rule: *"If the work would need files outside the card's
+Files list, STOP and report scope drift instead of expanding."* Silently
+re-architecting the URL layer of a whole milestone is the opposite of that, so it
+is recorded as `open_decisions_required_before.ADR-005_route_shape` instead.
+
+**ADR-005 itself is not in question.** `/` = bn and `/en` = en survives intact
+under the fix. What changes is only which App Router directory implements it.
+
+### What is in the working tree, and it is worth keeping
+
+All of T-080's substance is built, and all of it is shape-independent apart from
+the layout's param handling:
+
+- `src/components/public/Header.tsx` — sticky, §5's 2px gold bottom rule, eight
+  nav links, wordmark, login link, switcher, hamburger. A Client Component for
+  one reason: the current page must be marked and the layout above cannot see the
+  path, since `[[...locale]]` captures the locale and nothing beneath it. Labels
+  arrive as resolved strings, so `src/i18n/*.json` stays out of the client bundle
+  — the same call `AdminSidebar` made. Active state is computed once here and
+  handed to `MobileNav` as a boolean, so the bar and the drawer cannot disagree
+  about which page you are on.
+- `src/components/public/LanguageSwitcher.tsx` — **two `<a>` elements and nothing
+  else.** No state, no effect, no storage, and nothing imported from
+  `next/headers`. The target comes from T-030's `switchTo`, which was written for
+  this component. The card's Contract is discharged structurally rather than by
+  discipline: there is no code path here that *could* set a cookie.
+- `src/components/public/MobileNav.tsx` — drawer at `lg:`, Escape-closable, closes
+  on navigation, `aria-hidden` and `tabIndex={-1}` while shut so a screen reader
+  and the keyboard cannot reach off-screen links. Carries the switcher and the
+  login link, because a control that exists only on a laptop does not exist.
+- `src/components/public/Footer.tsx` — Server Component, four columns, §5's
+  Gold Light Tint hover (`.link-on-primary`, 7.83:1; full-saturation gold is
+  3.36:1 and fails at body size). A column with nothing in it does not render —
+  an empty "Contact us" heading over blank space reads as a school that lost its
+  own phone number. Nothing is invented: every value is a row or it is absent.
+- `src/app/(public)/[[...locale]]/layout.tsx` — locale guard, skip link, shell,
+  and a `cachedRead` of the branding/settings/channels/socials the header and
+  footer render, tagged `site:settings`. That tag exists for exactly this read:
+  §A-6 gives `site_settings` the site-wide tag *because* the header and footer are
+  on every page, and `pathsForModule('site_settings')` revalidates `/` as a
+  layout to reach it.
+
+**Two files are outside the card's Files list, and both are required by its own
+Do list.** `src/components/public/{SafeHtml.tsx,safe-html.ts}` (plus
+`safe-html.test.ts`) are the "render-side HTML sanitization layer" the Do list
+names, and the card's Files line has no home for it. Judgement call, flagged
+rather than buried: the Do list is authoritative on *what*, and stopping M6 over
+a missing filename would have been the wrong trade. The rule is imported from
+T-034's exported `SANITIZE_OPTIONS` rather than restated — two allowlists drift,
+and the looser one wins. 11 new tests; suite is 352 passing, up from 341.
+
+`npx tsc --noEmit`, `npx eslint .`, `npx vitest run` and `npx next build` are all
+green in the tree as it stands, and `/` still serves 200, because nothing is
+nested under the catch-all yet. **That is a landmine, not a resolution.** The
+first page added under it breaks every route in the app. `blocked_on` is what
+stops the next session walking into it, and the layout's own header comment says
+so in the first paragraph.
+
+### Three defects found in done tasks, none of them touched
+
+**`/en/login` does not exist.** The login page is at `src/app/(public)/login`,
+outside the locale segment, so there is no English URL for it — but
+`src/middleware.ts` redirects an expired session to `localizePath('/login',
+locale)`, which is `/en/login`. An English admin whose session expires lands on a
+404 today. T-033's and T-041's files, both done. **Wants a task id.** T-080's
+header links the bare `/login` deliberately, and says why in `HeaderProps.login`.
+
+**`<html lang>` is hardcoded `bn` for the whole site.** `src/app/layout.tsx` sits
+above the locale segment and cannot see it, and T-001's own comment in that file
+hands `<html lang>` to T-080 — but the file is not in T-080's Files list. The
+public subtree therefore declares `lang` and `dir` on its own wrapper, which is
+where a screen reader reads it from anyway. The knock-on is real: `globals.css`
+sizes Bangla body text through `html:lang(bn)`, which matches on English pages
+too, so the wrapper names its type scale explicitly to keep English at 16px/1.6.
+The document-level attribute belongs with `hreflang` — **T-100**.
+
+**No language-preference cookie exists.** T-089's card asks for a "cookie notice
+for the language-preference cookie"; `src/lib/cookies.ts` defines only the
+session cookie, and T-080's Contract forbids the switcher from setting one. When
+T-089 is unblocked its cookie notice should describe the cookies the site
+actually sets — the essential admin session cookie — and state that language
+lives in the URL, not in a cookie. Describing a cookie that does not exist would
+be a privacy notice that is factually wrong.
+
+### Not verified
+
+**No browser.** The 360px Bangla-overflow half of T-080's Verify was not measured:
+no Playwright, Puppeteer or jsdom is installed, and T-112 owns the first of those.
+The header, drawer and footer are built to §A-8.3 — `min-w-0` on the wordmark, no
+fixed widths, no `truncate`, one wrapping nav row per line, `w-80 max-w-[85%]` on
+the drawer — and reasoning says they hold at 360px, but reasoning is not the
+measurement the card asks for. Seventeen screens now owe a live smoke test.
+
+**The stray tracked file named `on` at the repo root** is still there, still in no
+card's Files list. Left alone again.

@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-17",
-  "updated_by": "T-067",
+  "updated_by": "T-071",
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -102,7 +102,7 @@
     }
   },
   "progress": {
-    "done": 45,
+    "done": 49,
     "total": 78
   },
   "milestones": [
@@ -140,7 +140,7 @@
       "id": "M5",
       "title": "Admin modules",
       "tasks": "T-060..T-071",
-      "done": false
+      "done": true
     },
     {
       "id": "M6",
@@ -765,7 +765,7 @@
         "T-051",
         "T-038"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-069",
@@ -775,7 +775,7 @@
         "T-051",
         "T-038"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-070",
@@ -785,7 +785,7 @@
         "T-051",
         "T-038"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-071",
@@ -795,7 +795,7 @@
         "T-051",
         "T-037"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-080",

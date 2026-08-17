@@ -853,3 +853,242 @@ T-065:
    `module:action` pair, since the audit trail's `attempted` field is the one
    place this distinction — general edit vs. the private record specifically
    — would otherwise be lost.
+
+## 2026-08-17 — T-068, T-069, T-070, T-071
+
+**by:** T-071 · **next:** T-080
+
+B-5, and **M5 is closed** — all twelve admin modules are built.
+`src/app/admin/{messages,users,profile,media}/**`,
+`src/lib/modules/{messages,users,media}/**`: the inbox, the account and
+permission matrix screen, own profile, and the media library. `npx tsc --noEmit`,
+`npx eslint .`, `npx vitest run` (341 passing, up from 299, and stable across
+three consecutive runs) and `npx next build` all pass, with `/admin/messages`,
+`/admin/messages/[id]`, `/admin/users`, `/admin/profile`, `/admin/media` and
+`/admin/media/[id]` in the route table.
+
+**Built in the order `batches[B-5].why` names, not the order `tasks` lists.**
+That field says "T-069 carries the weight and is built first while context is
+freshest", which contradicts `read_order_for_ai` step 6's "in their listed
+order". The four tasks share no `needs` between them, so the order changes
+nothing about correctness, and the more specific instruction in the same
+authoritative file was followed. Worth reconciling in one of the two places.
+
+### The batch's one recurring problem, and how it was answered
+
+Three of these four cards ask for a write that §A-5.2 gives the module no action
+code for. It is the same shape each time and the answers are deliberately not
+uniform, so they are set out together here rather than three times below.
+
+`contact` declares `view` and `delete`; the card wants a read stamp *and* a
+status change. `media` declares `view`, `add` and `delete`; the card wants alt
+text edited. In both cases inventing an action would mean a `module_actions` row
+and a migration, which is outside these cards — and in both cases the wrong
+binding is a real permission bug rather than an inconvenience.
+
+- **The contact read stamp rides on `contact:view`, outside the write
+  pipeline.** `mutate()` refuses `view` by design ("mutate() is for writes"),
+  and it is right to: opening a message is not a mutation an admin chose, it is
+  the receipt that they opened it. `markMessageRead` authenticates and calls
+  `assertCan` for itself — the same function, not a second implementation — and
+  writes `read_at` / `read_by_user_id`, which is what §B-13 put those columns
+  there for. It writes **no `activity_logs` row**: the columns *are* the access
+  record, and an audit entry per message opened would bury the log that records
+  decisions under one that records glances.
+- **Contact status changes ride on `contact:delete`.** Archiving, marking spam
+  and removing are one authority — disposal — and `delete` is the only
+  discretionary write the module has. Binding them to `view` would mean a
+  read-only grant could change rows, which is exactly what the card's Contract
+  ("read-only plus delete") denies. `actions.test.ts` asserts that split
+  directly, because it is this card's judgement call and the place it could be
+  wrong.
+- **Media alt text rides on `media:add`.** §B-5's bytes are immutable — T-034
+  says so on `mediaMetadataSchema` itself — so the only thing an "edit" could
+  mean here is *describing* an asset, which is required at upload and is the
+  same act. Binding it to `delete` would leave an admin able to upload an image
+  but unable to fix its alt text, the accessibility field §A-13.1 gates every PR
+  on.
+
+In all three the audit verb is the event, not the permission (`update`), per
+§B-14's separation of the two vocabularies.
+
+### T-069 — Admin: Manage Admins & permission matrix
+
+`src/app/admin/users/**`, `src/lib/modules/users/**`: accounts CRUD with a
+generated password, suspension, soft delete, the matrix, and the special-grants
+panel.
+
+**The matrix renders from `module_actions`, and the `users` module is the
+proof.** Columns come from `permission_actions`, rows from `modules`, and
+whether a cell is a checkbox or a `—` comes from whether `module_actions` holds
+that pair. `readUsersScreen` reads all three tables; `@/lib/modules` — the
+compile-time mirror — is deliberately not consulted. §A-5.2 gives `users` no
+applicable actions and the §B-19 seed writes it none, so its whole row renders
+`—` without a line of code arranging it. Headings come from
+`module_translations` / `action_translations` for the same reason: a matrix
+whose labels are inlined cannot be relabelled without a deploy. The test asserts
+the grid cell-for-cell against the catalogue, in both directions.
+
+**Super Admin only, enforced three times.** For anyone else `can()` refuses at
+`isActionApplicable` before consulting a permission set, `user_module_permissions`
+could not hold a contrary grant (the composite FK refuses it), the pipeline's
+in-transaction re-check denies again, and each handler calls `requireSuperAdmin`.
+The third check is not decoration — it keeps the Contract true if someone later
+seeds `module_actions` rows for `users`, which is the one change that would
+quietly open the module. Verified with an admin holding *every* grantable
+permission in the seed: all four actions 403 at stage `authorize`.
+
+**Suspension revokes sessions inside the same transaction**, and so do deletion
+and a role change (§A-9.2). The `UPDATE` runs on the transaction handle rather
+than through `revokeAllForUser`, which holds the global client — a second
+connection could commit the revocation for a suspension that then rolled back.
+Three live sessions, one suspend, zero live sessions, all reasons `suspended`.
+A **permission** change deliberately does not revoke: §A-9.2's list stops at
+role change, and `loadPermissions` is memoized per request, so a revoked grant
+is gone on the next request.
+
+Three judgement calls this card had to make, none of them in its Do list:
+
+- **A Super Admin cannot suspend or delete their own account** (422). The
+  revocation would end their own session and leave nobody able to undo it.
+- **Permission rows cannot be stored for a Super Admin** (422). §A-9.3's bypass
+  means unchecking every box would change nothing, so the grid is not offered
+  and the write is refused rather than rendering checkboxes that decide nothing.
+- **An inapplicable pair is a 422 naming the pair**, not the `P2003` with a
+  constraint name in it that the composite FK would otherwise produce.
+
+The generated password (`password.ts` — `randomInt`, not `randomBytes % n`, so
+the alphabet is unbiased; ambiguous glyphs dropped because this value travels by
+being read aloud) is returned as the action's `data` and reaches nothing else,
+asserted by searching the audit row for it.
+
+### T-068 — Admin: Contact messages inbox
+
+`src/app/admin/messages/**`, `src/lib/modules/messages/**`: paginated searchable
+list, detail, read stamp, status, soft delete and restore.
+
+**First real consumer of T-051's `DataTable`.** The server-side pagination
+contract holds: the page parses the query with `parseDataTableQuery` and puts it
+in the SQL, and the client gets one page plus a `COUNT`. `MessagesTable` exists
+as a Client Component only because `DataTableColumn.cell` is a function and
+functions do not cross the Server → Client boundary.
+
+**The read model is raw SQL, and had to be.** `contact_messages.purge_after` is
+a `GENERATED ALWAYS … STORED` column carried as `@ignore` in the Prisma schema,
+so no `select` can reach it — and §A-16.1's 12-month promise to the person who
+wrote in is exactly what this card wants on screen. It is on every list row and
+on the detail.
+
+**Opening the detail page is what marks the message read**, taken literally:
+there is no "mark as read" button, because a button records that somebody
+pressed a button. The stamp is guarded by `read_at IS NULL`, so the **first**
+reader is kept — two admins opening the same message at once cannot both claim
+it, and the singular columns are not overwritten by whoever looked most
+recently. `new → read` moves with the stamp.
+
+Delete is soft and reversible, and the test proves the part that matters: the
+restored message's `purge_after` is unchanged, because §A-16.1's clock runs from
+`submitted_at` through a generated column and a round trip through the trash
+cannot move it. Delete and restore audit as `delete` and `restore`.
+
+Sort keys are an allowlist checked twice — once by `parseDataTableQuery`, once
+before interpolation — because the value reaches an `ORDER BY`; `?sort=password_hash`
+is dropped, not escaped. Search is `ILIKE` with `%` and `_` escaped, so a bare
+`%` in the box is a literal rather than "match everything".
+
+### T-070 — Admin: My Profile
+
+`src/app/admin/profile/**`: own details, own password, own permissions
+read-only, preferred locale.
+
+**The Contract is negative — a user may never alter their own role or
+permissions — and it is kept structurally, not by a check.** T-034's
+`profileUpdateSchema` declares three fields and is `.strict()`, so a
+hand-crafted POST carrying `roleCode` or `isActive` is a 422 naming the unknown
+key rather than a field this page had to remember to ignore. Asserted against
+the schema directly. The permissions section is a list; there is no form around
+it and no action behind it.
+
+**The password change keeps this session and revokes the others**, the one place
+this differs from T-043's forced rotation (which revokes all of them, because
+the password being retired was generated at seed time and may have been read by
+whoever ran it). Here the person typing is the owner, and signing them out of
+the tab they are working in costs something and buys nothing. The revoking
+`UPDATE` excludes `sessions.uid` for the requesting session and runs on the
+transaction handle.
+
+The rule lives in `src/app/admin/profile/rotate.ts` rather than inline in the
+page, so that it can be asserted at all: `jsx: preserve` still means Vitest
+refuses every `.tsx` file (the B-1 finding, now eight cards old). Three sessions,
+one change, `verifySession` returns non-null for the current token and null for
+the other two — the property an admin actually experiences, rather than a row
+count. An already-revoked session keeps its original reason.
+
+### T-071 — Admin: Media library
+
+`src/app/admin/media/**`, `src/lib/modules/media/**`: browse, search, describe,
+locate and retire.
+
+**The usage list is why this module exists**, and it is the card's Verify.
+§A-10.1's argument for a central registry is that orphan detection is possible
+only because every consumer holds a `media_id` foreign key — so `MEDIA_REFERENCES`
+lists all eighteen such columns with the §A-5.2 module that owns each table, and
+the delete refusal names table, column and record. `media_asset_translations`
+and `media_variants` are excluded: they are the asset's own children, and an
+asset with alt text and three derivatives is still an orphan.
+
+**That list is a constant, and the test asserts it against `information_schema`.**
+Introspecting at request time would silently absorb a new referencing column and
+keep working — which sounds like a feature until an under-counted usage list
+lets an admin delete an asset that is on the site. As a constant, adding a
+consumer is a visible edit; as an asserted constant, forgetting the edit fails
+the suite.
+
+**"Blocked while referenced" is policy, not a constraint.** The delete is soft,
+so no foreign key would object to pulling an asset out from under a hero slide
+that is live right now. A referencing row counts whether or not it is itself
+soft-deleted, matching §A-10.4's measure of orphan-ness — an asset released
+while its holder sat in the trash would come back to a broken reference.
+
+The storage summary reports per-bucket counts and bytes, variant totals, and the
+orphan count §A-10.4's weekly job is allowed to act on. Its test asserts
+orphan-ness **per asset** rather than as a delta on the global count: the other
+suites in a run create and delete `media_assets` rows of their own, and a
+before/after difference was measuring them too. That was caught by a flake, not
+by review; the suite now passes three consecutive full runs.
+
+No upload here — §A-10.3's pipeline and endpoint are T-037's, and this card's
+Stop line is "library only".
+
+### Carried forward, and what is still owed
+
+**A second route/registry mismatch, and it is the same defect as T-060's.**
+`MODULES.contact.adminPath` is `/admin/contact`; T-068's Files list names
+`src/app/admin/messages/**`, so the page is at `/admin/messages` and the sidebar
+link 404s. This is now **two** modules the sidebar cannot reach — `site_settings`
+(flagged in B-2, still open) and `contact`. `src/lib/modules.ts` is T-031's and
+`prisma/seed.ts` is T-024's, both done, so neither may be revised here. **This
+needs a task id, and it now blocks a demo of two screens rather than one.**
+`users`, `media` and `profile` all match their registry paths.
+
+**Not verified: no page has been rendered in a browser.** All four screens are
+proven at the Server Action, read-model and database layer only. The live smoke
+test owed since T-050 is now owed for sixteen screens.
+
+**`ImagePicker` still cannot be mounted in a route (T-051's defect).** Unchanged,
+though this batch adds no ninth local twin — the media library describes assets
+rather than uploading them, so it needed no picker.
+
+**The duplicated `loadUser()` is now in ten page files.** Every M5 page re-reads
+the `users` row the layout already read. A request-scoped loader belongs in
+`src/lib/*`, which no M5 card owns. Chrome strings are inlined per screen for
+the same reason: `src/i18n/*.json` is in no M4/M5 Files list, and there are now
+twelve `copy.ts` maps waiting on that consolidation.
+
+**T-110 is unblocked.** Its `needs` is `T-069` alone, and the matrix, the
+suspension revocation and the three-layer Super Admin gate are the surface it
+asserts against. B-5's own tests cover those three specifically; they are not a
+substitute for T-110's ~40 cases.
+
+**The stray tracked file named `on` at the repo root** is still there and still
+in no card's Files list. Left alone again.

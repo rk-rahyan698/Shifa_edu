@@ -526,3 +526,179 @@ per screen because `src/i18n/*.json` is in no M4/M5 Files list; three more
 `src/components/**` still cannot be tested at all until
 `esbuild: { jsx: 'automatic' }` reaches `vitest.config.ts` — T-051 called that
 the highest-value follow-up in the repo, and it is still unclaimed.
+
+## 2026-08-17 — T-063, T-064
+
+**by:** T-064 · **next:** T-065 (batch B-3 complete; M5 continues with B-4)
+
+Batch B-3 — the two heaviest cards in M5, paired alone because both carry
+referential-integrity contracts that needed room. 272 tests pass, up from 254;
+`npx tsc --noEmit`, `npx eslint .` and `npx next build` are all clean, and both
+new routes appear in the build output (`/admin/academics`, `/admin/admission`).
+
+**These are the first full-CRUD modules.** T-060/T-061/T-062 were `view`+`edit`
+singletons; §A-5.2 gives `academics` and `admission` four actions each. Two
+consequences ran through both cards. First, `add` and `edit` are separate
+mutations everywhere — a create binds to `academics:add` and an update to
+`academics:edit`, so an admin trusted to enter next year's calendar is not
+thereby trusted to rewrite this year's. Second, the panels take a `Rights`
+record (`{add, edit, delete}`) instead of one `editable` boolean, because a
+screen that hides the add button from someone holding `:add` misreports what
+they may do.
+
+**`defineCrud`, duplicated once per module.** Nine entities × three actions in
+T-063 alone is twenty-seven near-identical `defineMutation` calls, differing only
+in which table they touch — twenty-seven chances to bind a create to `edit` or to
+omit an `entityTable` and lose the audit anchor. A small factory takes the
+`{add, edit}` schema pair and two callbacks (`write`, `remove`) and produces the
+triple. It is written twice, once per module, for the same reason `result.ts` and
+`panel-kit.tsx` were in B-2: M5 requires each module to be independently
+shippable. A shared `src/lib/modules/crud.ts` belongs to no card in this batch and
+is now the most obviously earned consolidation in M5 — see the deferred list.
+
+### T-063 — Admin: Academics
+
+`src/app/admin/academics/**`, `src/lib/modules/academics/**`: nine panels over
+§B-8's nine entities, in dependency order (a year before a section, a class
+before a routine, a term before an exam) so an admin working top to bottom never
+meets an empty select whose reason lives further down the page.
+
+**The Contract needed application code, and the reason is worth recording.**
+"Deleting a class grade with dependent fee structures or exams is refused with an
+explanation (`RESTRICT`), never cascaded." §B-8 does give both foreign keys
+`ON DELETE RESTRICT` — but `class_grades` is **soft**-deleted. The delete an admin
+performs is an `UPDATE`, and an `UPDATE` never consults a foreign key. Left to the
+schema alone, removing Class 5 would have succeeded and silently orphaned its fee
+grid. So `deleteClassGrade` counts the dependants itself, inside the transaction,
+and refuses by naming them; the `RESTRICT` clauses remain underneath as the
+backstop for any hard-delete path. Counting at page render would not do —
+`read.ts` does that too, for the confirm dialog, but a count read when the page
+loaded can be wrong by the time anyone clicks, so the authoritative count is taken
+through `tx`.
+
+The refusal is a **422 carrying a sentence**, not a bare status: "…cannot be
+removed while 2 fee structures (2026, 2027) and 3 exams (annual on 2026-11-05)
+still reference it." It travels as a `FieldIssue` on `id`, and `useActionRunner`
+surfaces that message verbatim rather than flattening it to "those values were not
+accepted" — which is why no translated template for it exists in `copy.ts`. The
+sentence names rows, so it is composed where the rows are.
+
+The same principle generalised: every **hard** delete in the module goes through
+`refuseOnDependants`, which converts Postgres's `P2003` into the same shaped 422.
+`academic_years`, `class_sections` and `exam_terms` have no `deleted_at` in §B-8,
+so their deletes are real, and a real delete against a `RESTRICT` is otherwise a
+500 with a constraint name in it. `subjects` got the explicit pre-check too,
+uninstructed: it is soft-deleted like `class_grades`, and an assignment surviving
+its subject renders as a subject with no name on the public page.
+
+Verify, second half — **uploading a routine demotes the previous `is_current`** —
+is asserted by reading both rows back. The subtlety is `ux_routine_current`'s
+`COALESCE(class_section_id, 0)`: a class-wide routine and Section A's routine are
+**different slots**, so the demotion matches the section exactly rather than
+treating null as a wildcard. Uploading Section A's timetable must not retire the
+one the whole class shares, and there is a test for exactly that.
+
+Eight tests. Both Verify halves are asserted in both directions — the delete is
+allowed once the dependants are gone, which is what distinguishes a real check
+from code that simply never deletes classes.
+
+### T-064 — Admin: Admission & fees
+
+`src/app/admin/admission/**`, `src/lib/modules/admission/**`: six panels over
+§B-9, plus the fee grid and the fee types that give it columns.
+
+**The admission-open expression lives in `src/lib/modules/admission/open.ts`, and
+nowhere else.** This is the card's most consequential clause and it earned its own
+file. §B-9 has `is_open`, `opens_on` and `closes_on` as three independent columns
+and never combines them, so "admission is open right now" is a judgement the
+application makes — and a judgement made twice is the failure mode: the admin
+panel reporting a banner the public page is not rendering. `CyclePanel` calls it
+to draw its status line; **T-084 must call the same function**. The rule is that a
+cycle is open when it is current, declared open, *and* today is inside
+`[opens_on, closes_on]` with null bounds unbounded. The flag and the window are an
+**and**, not a fallback: a cycle whose dates have passed is not open because
+nobody unticked the box, and one inside its dates is not open if the school never
+declared it.
+
+`admissionOpenState` returns a *reason* rather than a boolean because the panel has
+to explain itself — "the closing date was Tuesday" is actionable, "closed" sends an
+admin looking for a bug that is not there.
+
+**The dates are compared in `Asia/Dhaka`, not UTC**, and this is a real bug avoided
+rather than a nicety. `opens_on`/`closes_on` are `DATE` columns holding civil
+calendar days; ARCHITECTURE.md already fixes the school's civil time to
+`Asia/Dhaka` for §B-13's retention column and works the example there. Comparing
+against the server's UTC day disagrees for every instant between midnight and
+06:00 Dhaka — roughly a quarter of the day — and what it gets wrong is whether
+admission is open on its first and last morning. Two tests pin the boundary:
+20:00Z on the closing day is already the next day in Dhaka and must read closed.
+The zone is resolved through `Intl` rather than by adding six hours, so a future
+DST adoption would not quietly invalidate the file.
+
+**Verify — adding a "Transport" fee type appears in the grid without a migration —
+runs the literal scenario.** Create the type through the action, re-read the
+screen, assert the column is present for every class and empty, then record
+`1250.50` against it and read it back exact. It is true because the grid's columns
+come from `fee_types` rows: a column exists because a row exists, not because some
+class already has an amount. The `fee_structures` row for (class, year) is created
+**on demand** by `saveFeeCell` — that row is normalisation bookkeeping, not a
+decision, and making an office manager create one before typing an amount would be
+the first thing they asked us to remove.
+
+`feeTypeSchema` is the one genuinely new schema in the batch. T-034's
+`admission.ts` stops at `feeItemSchema`, which takes a `feeTypeId` and assumes the
+type exists — so a module that can only reference fee types it was handed cannot
+satisfy either the Contract or the Verify. It was added on this card's own surface
+rather than by editing T-034, which is finished work. Its columns follow §B-9's own
+note: `is_recurring_monthly` and `sort_order` belong on `fee_types` because they
+depend on the type alone, which is the 2NF argument in §B-1.4.
+
+**Money never becomes a JavaScript number.** An amount is a decimal string from the
+input through `money` to `NUMERIC(12,2)` and back via `toFixed(2)`, never
+`toNumber()`. The grid's inputs are `type="text"` with `inputMode="decimal"` for
+the same reason — a number input hands back `valueAsNumber` and invites the browser
+to normalise what was typed. Tests pin `8100.10` round-tripping exact and
+`100.005` / `-50.00` being refused with a 422.
+
+**An empty cell and a zero are different claims** — "not charged" versus "charged,
+and it is free" — and §B-9 lets a school say both. Clearing a cell therefore
+deletes the `fee_items` row rather than storing `0.00`, and there is a test that
+zero is still storable. Retiring a fee type deactivates rather than deletes:
+`fee_items.fee_type_id` is `RESTRICT`, and a charge a school has billed against is
+part of what it told parents that year.
+
+Ten tests, including five on `open.ts` alone.
+
+### Carried forward, and what is still owed
+
+**The `ImagePicker` defect from T-060 is unchanged and still unclaimed.**
+`src/components/admin/ImagePicker.tsx` imports `IMAGE_MAX_BYTES` from
+`@/lib/upload`, which pulls `sharp` and `node:crypto` at module scope, so any
+route mounting it fails `next build`. Both modules in this batch therefore ship
+their own `DocumentField.tsx` — a PDF twin of B-2's `MediaField.tsx`, since a
+routine and an admission form are documents rather than images (10 MB ceiling, no
+preview, a required Bangla *description* rather than alt text). That is now
+**five** local copies waiting on a one-line fix that needs a new card id.
+
+**Unlike T-060, these routes are reachable from the sidebar.**
+`MODULES.academics.adminPath` is `/admin/academics` and
+`MODULES.admission.adminPath` is `/admin/admission`; both match where the pages
+actually live. The `/admin/settings` vs `/admin/site-settings` mismatch T-060
+reported is unaffected and still open.
+
+**Not verified: no page has been rendered in a browser.** Both screens are proven
+at the Server Action and database layer and at `next build` only. The live smoke
+test owed since T-050 now covers five admin screens.
+
+`npx prettier --write` was run against this batch's files only. The five
+pre-existing warnings from earlier tasks (`globals.css`, `env.ts`, `fonts.ts`,
+`prisma.ts`, `types/db.ts`) are untouched and still reported.
+
+Deferred, in rough order of how much they have now earned: a shared
+`src/lib/modules/crud.ts` (the `defineCrud` factory, now written twice verbatim);
+the `esbuild: { jsx: 'automatic' }` line in `vitest.config.ts` that would let
+anything under `src/components/**` be tested at all — still the highest-value
+unclaimed follow-up in the repo, and now blocking coverage of two grids and
+fifteen panels; a request-scoped user loader in `src/lib/*` (eight callers now
+re-read the `users` row the layout already read); and `src/i18n/*.json`
+consolidation for the chrome strings, now five `copy.ts` maps deep.

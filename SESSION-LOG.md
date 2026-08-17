@@ -702,3 +702,154 @@ unclaimed follow-up in the repo, and now blocking coverage of two grids and
 fifteen panels; a request-scoped user loader in `src/lib/*` (eight callers now
 re-read the `users` row the layout already read); and `src/i18n/*.json`
 consolidation for the chrome strings, now five `copy.ts` maps deep.
+
+## 2026-08-17 — T-065, T-066, T-067
+
+**by:** T-067 · **next:** T-068
+
+B-4. `src/app/admin/{faculty,notices,gallery}/**`,
+`src/lib/modules/{faculty,notices,gallery}/**`: three modules, each verified
+independently against the pattern B-2/B-3 established. `npx tsc --noEmit`,
+`npx eslint .`, `npx vitest run` (299 passing, up from 272) and `npx next build`
+all pass with `/admin/faculty`, `/admin/notices` and `/admin/gallery` present in
+the route table.
+
+### T-065 — Admin: Faculty (+consent gates)
+
+`src/app/admin/faculty/**`, `src/lib/modules/faculty/**`: one profile CRUD, a
+subjects multi-select, and a second, isolated panel for `faculty_private`.
+
+**Consent is a date field, not a checkbox that stamps `now()`.** `facultySchema`
+(T-034) already carries both `.refine()`s — `photoConsentAt` required whenever
+`photoMediaId` is set, `publishConsentAt` required whenever `statusCode` is
+`published` — so nothing here had to add a wrapper refine the way `about`'s
+committee schema did. The UI follows `about`'s `CommitteePanel` precedent
+exactly: "recorded on", a real date the school can point to, Save disabled with
+the reason stated next to the field. T-034's own `facultyConsentSchema` (a
+separate `{facultyId, kind, granted}` action) goes unused this batch — B-2's
+precedent was closer to the card's intent than that schema's header suggested,
+and a second action recording the same two columns a form field already carries
+would be two paths to one fact. Worth a second opinion; the schema stays for
+whoever picks it up.
+
+**The internal panel is Super Admin only, enforced at the endpoint, not only
+the screen.** §A-9.4's model for a protected sub-capability is a special
+grant, but none of the four seeded ones (`edit_branding`, `export_data`,
+`purge_deleted`, `manage_backups`) fits a per-module private record, and
+seeding a fifth is outside this card's Files. `saveFacultyPrivateAction` is
+bound to the ordinary `faculty:edit` permission and then checks
+`user.roleCode === SUPER_ADMIN_ROLE` itself, throwing `MutationDeniedError`
+before the table is touched. Two tests pin it: 403 and nothing written for a
+plain `faculty:edit` holder, 200 and a row for `super_admin`. The read side
+mirrors it — `readFacultyPrivateMap` is a second function from
+`readFacultyScreen`, called by `page.tsx` only once `isSuperAdmin` is already
+established, so a non-Super-Admin request never queries `faculty_private` at
+all.
+
+**`employee_code` auto-generates but is not forced.** T-034 declared it as an
+ordinary optional field rather than a server-only one, so `nextEmployeeCode`
+(`SIS-F-001`, `SIS-F-002`, …) only fires when the admin leaves it blank on
+create; `FacultyPanel.tsx` simply never offers to edit it afterwards. Nine
+tests, covering both consent gates, the internal panel's isolation, the
+subjects multi-select really replacing the join rows (not only adding to
+them), and the auto code.
+
+### T-066 — Admin: Notices (+publish action)
+
+`src/app/admin/notices/**`, `src/lib/modules/notices/**`: notice CRUD, a
+per-locale slug that auto-generates from the title, multiple attachments, and
+`publish` as its own action.
+
+**`notice:publish` is checked independently by construction, not by
+convention.** `noticeSchema` (T-034) does not declare `statusCode` at all —
+its own header names the reason — so `saveNoticeAction`/`updateNoticeAction`,
+bound to `notice:add`/`notice:edit`, cannot move a notice's status even if a
+caller tries to smuggle the field into `values`: `.strict()` refuses the
+unknown key with a 422 before authorization for `publish` would ever be
+relevant. `publishNoticeAction` is the only action bound to `notice:publish`
+and the only path that writes `status_code`. Three tests pin it: draft saves
+at 200 and publish 403s for an add+edit-only admin; the same publish succeeds
+for an admin holding `notice:publish`; and the smuggling attempt is refused at
+422, not 403, proving it never reaches authorization for the right it lacks.
+
+**"Publish now" is a client-side default-fill, not a relaxed schema.**
+`noticePublishSchema`'s own `.refine()` requires `publishedAt` whenever
+`statusCode` is `published`, and this file reuses it unmodified — T-034's
+header text ("the writer (T-066) fills `now()` when none is given") is
+satisfied by `NoticesPanel.tsx` sending the current instant when the admin
+leaves the schedule field blank, not by loosening the refine for the server
+handler.
+
+**A duplicate slug is a 422 naming the field, not a 500.**
+`notice_translations` carries `UNIQUE (locale_code, slug)`; `withUniqueSlug`
+turns Postgres's `P2002` into a `ValidationFailedError`, the same move
+`academics`' `refuseOnDependants` makes for `P2003`. One test pins it: a
+second notice sharing a Bangla slug is refused at 422, and the field named is
+`values.translations.bn.slug`.
+
+Attachments (`notice_attachments`) are two small actions bound to
+`notice:edit` — the Contract is specifically about who may *publish*, not who
+may attach a file — and are only offered once a notice has an id, since a
+child row needs a parent to point to. Four tests.
+
+### T-067 — Admin: Gallery (albums, photos, videos)
+
+`src/app/admin/gallery/**`, `src/lib/modules/gallery/**`: albums, a
+one-photo-at-a-time uploader scoped to a chosen album, and videos by provider
++ id.
+
+**Video-id extraction happens client-side, before the value ever reaches the
+schema — it has to.** `providerVideoId` is validated against
+`/^[A-Za-z0-9_-]+$/`, which a pasted URL never matches, so `extractVideoId`
+(`src/lib/modules/gallery/video-id.ts`, a plain module with no React or server
+import) runs on every keystroke of `VideosPanel`'s "video link or id" field.
+Eight pure-function tests cover watch/shorts/embed/`youtu.be` URLs, a bare id
+passed through unchanged, and a non-YouTube provider left untouched. Two
+DB-backed tests pin the write path: an already-extracted id round-trips
+exactly, and a raw URL that skipped extraction is refused at 422 rather than
+silently stored.
+
+**An active photo needs recorded subject consent, the same shape `about`'s
+committee and this batch's own faculty profile use** — a date field, Save
+disabled with the reason stated, the schema's `.refine()` deciding
+underneath. `galleryPhotoSchema`'s `translations` key is itself optional (a
+photo may carry no caption at all), which the write handler's
+`writePhotoTranslations` checks for before iterating locales. Photos are read
+as a flat list carrying `galleryAlbumId` rather than nested under their album,
+mirroring how §B-12 models the foreign key; `PhotosPanel.tsx` filters by
+whichever album is currently selected. Five tests total (video ids, photo
+consent both directions, an inactive photo needing no consent, permissions).
+
+### Carried forward, and what is still owed
+
+**The `ImagePicker` defect is now six local copies deep**, plus this batch's
+own `notices/AttachmentField.tsx` (a generic, non-image twin closer to
+`admission/DocumentField.tsx` than to `about/MediaField.tsx`) and two more
+`MediaField.tsx` copies (`faculty`, `gallery`) — eight files now waiting on
+the same one-line `esbuild`/upload-module fix. Still unclaimed, still needs
+its own card id.
+
+**`/admin/faculty`, `/admin/notices` and `/admin/gallery` all match
+`MODULES.*.adminPath`** — no sidebar mismatch to report this time.
+
+**Not verified: no page has been rendered in a browser.** All three screens
+are proven at the Server Action, database and `next build` layers only, same
+caveat B-3 recorded. The live smoke test owed since T-050 now covers eight
+admin screens.
+
+`npx prettier --write` was run against this batch's files only.
+
+**Two things this batch did that no card instructed, both defensible, both
+worth a second opinion**, beyond the unused `facultyConsentSchema` noted under
+T-065:
+ - `publishNoticeAction`'s handler infers the audit verb from the target
+   status (`publish` when moving to `published`, `update` otherwise) rather
+   than always recording `publish` for the one action bound to that
+   permission — so the activity log reads "unpublished" rather than
+   "published" when an admin reverts a notice to draft through the same
+   button.
+ - `saveFacultyPrivateAction`'s `MutationDeniedError` names
+   `"faculty:edit (private record, super_admin only)"` rather than a bare
+   `module:action` pair, since the audit trail's `attempted` field is the one
+   place this distinction — general edit vs. the private record specifically
+   — would otherwise be lost.

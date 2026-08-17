@@ -662,8 +662,9 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 **Needs** T-002, T-013, T-030, T-036 · **Unlocks** T-081, T-082, T-083, T-084, T-085, T-086, T-087, T-088, T-089, T-090, T-102
 **Load** `ARCHITECTURE.md` §A-7.1, §A-8 · `design-system.md` §5
 **Start** T-030 and T-036 done.
-**Do** Locale-segment route group (`/` = bn, `/en` = en). Sticky header with gold bottom rule, nav, **path-rewriting** language switcher, login link. Four-column footer. Mobile drawer. Render-side HTML sanitization layer.
-**Files** `src/app/(public)/[[...locale]]/layout.tsx`, `src/components/public/{Header,Footer,LanguageSwitcher,MobileNav}.tsx`
+**Do** Locale-segment route group (`/` = bn, `/en` = en) — a **required** `[locale]` segment plus the middleware rewrite below. Sticky header with gold bottom rule, nav, **path-rewriting** language switcher, login link. Four-column footer. Mobile drawer. Render-side HTML sanitization layer.
+**Route shape** ADR-005's URLs are unchanged: `/notices` is Bangla, `/en/notices` is English, and `/bn/*` is a 404. They are implemented by a required `[locale]` segment, with `src/middleware.ts` rewriting the bare Bangla namespace onto it (`/notices` -> `/bn/notices` internally). An optional catch-all `[[...locale]]` cannot be used: Next 15.5 refuses any child route under one. See `build-state.json` `open_decisions_required_before.ADR-005_route_shape`.
+**Files** `src/app/(public)/[locale]/layout.tsx`, `src/components/public/{Header,Footer,LanguageSwitcher,MobileNav}.tsx`, `src/components/public/{SafeHtml.tsx,safe-html.ts,safe-html.test.ts}`, `src/middleware.ts` (additive: the locale rewrite only)
 **Contract** The switcher **rewrites the path** — it never sets a cookie to change content. Components are built to Bangla string lengths first (§A-8.3).
 **Stop** Layout only — pages are stubs.
 **Verify** `/notices` renders Bangla, `/en/notices` English; the switcher preserves the current path; no horizontal overflow at 360px with Bangla nav labels.
@@ -673,7 +674,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-081 · Public: Home
 **Needs** T-017, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-10, §B-17 (homepage row) · `PRODUCT-SPEC.md` §P-6.2
 **Do** Hero slider · school at a glance · **stats bar (renders only verified stats)** · latest 5 notices · features · gallery preview (6) · CTA banner.
-**Files** `src/app/(public)/[[...locale]]/page.tsx`, `src/components/public/{HeroSlider,StatsBar,FeatureGrid}.tsx`
+**Files** `src/app/(public)/[locale]/page.tsx`, `src/components/public/{HeroSlider,StatsBar,FeatureGrid}.tsx`
 **Contract** Any section whose content is empty or placeholder-marked **does not render**. No empty shells.
 **Stop** Home only. **Verify** With no verified stats seeded, the stats bar is absent — not showing zeros.
 
@@ -682,7 +683,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-082 · Public: About
 **Needs** T-017, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-10, §B-6 · `PRODUCT-SPEC.md` §P-6.3
 **Do** History · vision · mission · principal's message · registration ids · committee (consented only) · achievements · curriculum highlights.
-**Files** `src/app/(public)/[[...locale]]/about/page.tsx`
+**Files** `src/app/(public)/[locale]/about/page.tsx`
 **Contract** Committee members without consent are omitted silently.
 **Stop** About only. **Verify** Placeholder-marked sections are absent; sanitized rich text renders correctly.
 
@@ -691,7 +692,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-083 · Public: Academics + routines/calendar/exams
 **Needs** T-014, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-8 · `PRODUCT-SPEC.md` §P-6.4
 **Do** `/academics` (class structure by stage, curriculum, subjects accordion, timing, assessment) plus `/academics/routines`, `/academics/calendar`, `/academics/exams`. All four in both locales.
-**Files** `src/app/(public)/[[...locale]]/academics/**`
+**Files** `src/app/(public)/[locale]/academics/**`
 **Contract** Everything scoped to the **current** academic year, with the year shown so parents know what they are reading.
 **Stop** These four pages. **Verify** Routine PDFs download; exam schedule filters by class.
 
@@ -700,7 +701,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-084 · Public: Admission
 **Needs** T-016, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-9 · `PRODUCT-SPEC.md` §P-6.5
 **Do** Status banner (open/closed styling) · process stepper · eligibility table · important dates · required documents · **fee table with ৳** · form download · FAQ accordion.
-**Files** `src/app/(public)/[[...locale]]/admission/page.tsx`
+**Files** `src/app/(public)/[locale]/admission/page.tsx`
 **Contract** The banner shows "open" **only** when the cycle is open *and* within dates — read through T-064's single admission-open expression, never restated here and never a hardcoded string.
 **Stop** Admission only. **Verify** With no cycle seeded, no open-admissions claim appears anywhere.
 
@@ -709,7 +710,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-085 · Public: Faculty
 **Needs** T-015, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-7, §A-16.2 · `PRODUCT-SPEC.md` §P-6.6
 **Do** Card grid of published, consented faculty: photo (or initials placeholder), name, designation, subjects, qualification, optional experience and bio.
-**Files** `src/app/(public)/[[...locale]]/faculty/page.tsx`, `src/components/public/FacultyCard.tsx`
+**Files** `src/app/(public)/[locale]/faculty/page.tsx`, `src/components/public/FacultyCard.tsx`
 **Contract** The query **must not** touch `faculty_private`. T-113 enforces this in CI.
 **Stop** Faculty only. **Verify** Response payload inspected for `personal_phone`/`personal_email` — must be absent.
 
@@ -718,7 +719,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-086 · Public: Notices list + detail
 **Needs** T-018, T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §B-11, §B-17 · `PRODUCT-SPEC.md` §P-6.7
 **Do** `/notices` paginated (10/page), category filter via query param, pinned first. `/notices/[slug]` with body, category, date, multiple attachment downloads, WhatsApp/Facebook share, back link.
-**Files** `src/app/(public)/[[...locale]]/notices/**`
+**Files** `src/app/(public)/[locale]/notices/**`
 **Contract** Visibility is exactly `status='published' AND published_at <= now() AND deleted_at IS NULL`. A future-dated notice must not appear.
 **Stop** These two pages. **Verify** A scheduled notice is invisible before its time; per-locale slugs resolve.
 
@@ -727,7 +728,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-087 · Public: Gallery
 **Needs** T-019, T-080 · **Unlocks** T-100, T-101 · **Load** `ARCHITECTURE.md` §B-12 · ADR-006
 **Do** Single `/gallery` route with `?type=photos|videos` and `?category=` — **no `/gallery/photos` or `/gallery/videos` routes** (ADR-006). Grid, lightbox with keyboard navigation, lazy loading, video modal from the provider template.
-**Files** `src/app/(public)/[[...locale]]/gallery/page.tsx`, `src/components/public/{GalleryGrid,Lightbox,VideoModal}.tsx`
+**Files** `src/app/(public)/[locale]/gallery/page.tsx`, `src/components/public/{GalleryGrid,Lightbox,VideoModal}.tsx`
 **Contract** Filter state lives in the URL so a filtered view is shareable.
 **Stop** Gallery only. **Verify** Those two legacy routes do not exist; lightbox is keyboard-navigable and Escape-closable.
 
@@ -736,7 +737,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-088 · Public: Contact + inquiry form
 **Needs** T-020, T-033, T-080 · **Unlocks** T-100, T-112 · **Load** `ARCHITECTURE.md` §A-16.2, §B-13 · `PRODUCT-SPEC.md` §P-6.9
 **Do** Contact cards from `contact_channels`, office hours, map embed, and the inquiry form (name, phone, email optional, message) with validation, rate limiting, **explicit consent text beside submit**, hashed IP, success toast.
-**Files** `src/app/(public)/[[...locale]]/contact/page.tsx`, `src/app/api/contact/route.ts`
+**Files** `src/app/(public)/[locale]/contact/page.tsx`, `src/app/api/contact/route.ts`
 **Contract** The consent line states what is collected, why, and the 12-month retention, and links to the privacy policy.
 **Stop** Contact only. **Verify** 4th submission in an hour is refused; raw IP is not stored; BD phone format enforced.
 
@@ -745,7 +746,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-089 · Public: Privacy policy, terms, cookie notice
 **Needs** T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §A-16
 **Do** `/privacy` and `/terms` in both locales, content from the §A-16.1 data inventory. Cookie notice for the language-preference cookie. Footer links.
-**Files** `src/app/(public)/[[...locale]]/{privacy,terms}/page.tsx`, `src/components/public/CookieNotice.tsx`
+**Files** `src/app/(public)/[locale]/{privacy,terms}/page.tsx`, `src/components/public/CookieNotice.tsx`
 **Contract** Drafted by AI, **flagged for human/legal review** before launch — this is a T-131 gate, not a T-089 one.
 **Stop** These pages. **Verify** Both reachable in both locales and linked from the footer.
 
@@ -754,7 +755,7 @@ M5 (admin) and M6 (public) can interleave once M2 is done — they share only th
 #### T-090 · Public: 404, error, empty & maintenance states
 **Needs** T-080 · **Unlocks** T-100 · **Load** `ARCHITECTURE.md` §A-13.4 (empty states)
 **Do** Bilingual `not-found.tsx`, `error.tsx`, loading skeletons, a reusable empty-state component ("No notices yet"), and a maintenance-mode flag.
-**Files** `src/app/(public)/[[...locale]]/{not-found,error,loading}.tsx`, `src/components/public/EmptyState.tsx`
+**Files** `src/app/(public)/[locale]/{not-found,error,loading}.tsx`, `src/components/public/EmptyState.tsx`
 **Contract** No page ever renders a bare blank region. Empty is a designed state.
 **Stop** These states. **Verify** A bad URL shows the bilingual 404 with working navigation.
 

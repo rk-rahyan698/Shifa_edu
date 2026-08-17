@@ -75,9 +75,7 @@
       ]
     }
   },
-  "blocked_on": [
-    "T-080"
-  ],
+  "blocked_on": [],
   "open_decisions_required_before": {
     "ADR-005_route_shape": {
       "affects": [
@@ -93,8 +91,8 @@
         "T-089",
         "T-090"
       ],
-      "status": "open_blocks_M6",
-      "note": "ADR-005's URL scheme is not in question; the App Router directory that implements it is. Every M6 card's Files list names `src/app/(public)/[[...locale]]/...`, and Next 15.5 cannot carry a child route under an optional catch-all: adding one makes the router throw `Catch-all must be the last part of the URL.` on EVERY request including `/`, and `next dev` refuses to start. Verified in T-080's session — see its blocked_reason. The fix verified in the same session is a required `[locale]` segment plus a middleware rewrite mapping the bare Bangla namespace onto it (`/notices` -> `/bn/notices` internally, `/en/notices` unchanged, `/bn/*` and `/xx/*` still 404). That needs a human decision because it rewrites the Files line of nine cards in BUILD-TRACKER.md and additively extends `src/middleware.ts`, which is done task T-041's output. No M6 task may be selected until this is decided and the cards are corrected."
+      "status": "decided_2026-08-17",
+      "note": "DECIDED. ADR-005's URLs are unchanged — `/notices` is Bangla, `/en/notices` is English, `/bn/*` is a 404. What changed is the App Router directory that implements them: a REQUIRED `[locale]` segment at `src/app/(public)/[locale]/`, with `src/middleware.ts` rewriting the bare Bangla namespace onto it (`/notices` -> `/bn/notices` internally, `/en/notices` passed through, an externally requested `/bn/*` rewritten to a non-locale segment so the layout's guard 404s it). The optional catch-all `[[...locale]]` the cards originally named is unusable: Next 15.5 throws `Catch-all must be the last part of the URL.` for EVERY request once any child route exists, and `next dev` will not start. Verified three ways in T-080's first session. The required segment also restores `generateStaticParams`, which the catch-all rejected (`Requested and resolved page mismatch: //notices /notices`), so §A-11's per-locale static generation is reachable again — T-103 owns wiring it. Applied 2026-08-17: the `Files` lines of T-080 and T-081..T-090 in BUILD-TRACKER.md now name `[locale]`, and T-080's `Files` line additively gains `src/middleware.ts` (the locale rewrite only — T-041's session and admin logic is untouched). No other done task was modified."
     },
     "ADR-005_url_change": {
       "affects": [
@@ -826,8 +824,7 @@
         "T-002",
         "T-013"
       ],
-      "status": "blocked",
-      "blocked_reason": "Unbuildable at the path its Files list names. The card puts the shell at `src/app/(public)/[[...locale]]/layout.tsx`, but Next 15.5 rejects child routes under an optional catch-all: with any nested page present, every request — `/` included — fails with `Catch-all must be the last part of the URL.`, and `next dev` will not start. Verified three ways on 2026-08-17: (a) `next dev` refuses at startup; (b) `next build` misleadingly SUCCEEDS and even lists the route, but `next start` then returns 500 for `/`, `/notices`, `/en/notices`, `/bn/notices` and `/xx/notices` alike; (c) removing the child route makes the identical layout serve `/` with 200, which isolates the cause to the nesting rather than to this card's code. `generateStaticParams` is separately unusable on the same segment — the empty-prefix entry an unprefixed locale needs fails with `Requested and resolved page mismatch: //notices /notices` — so §A-11's static public pages are unreachable at this shape too. The card's Verify therefore cannot pass: `/notices` needs either a child segment (breaks the app) or `[[...locale]]/page.tsx`, which is T-081's file and which this card must not pre-create. The fix is to move the segment to a required `[locale]` and rewrite the bare Bangla namespace in middleware; that shape was built and confirmed in the same session (`/notices` 200, `/en/notices` 200, `/bn/notices` 404, `/xx/notices` 404). It is out of scope here because it rewrites nine M6 cards' Files lines and extends T-041's middleware, so it is recorded as `open_decisions_required_before.ADR-005_route_shape` for the human. The layout, Header, Footer, LanguageSwitcher, MobileNav and the render-side sanitization layer are all built, typecheck, lint and test clean in the working tree, and are shape-independent apart from the layout's param handling — see PENDING-COMMIT.md."
+      "status": "todo"
     },
     {
       "id": "T-081",

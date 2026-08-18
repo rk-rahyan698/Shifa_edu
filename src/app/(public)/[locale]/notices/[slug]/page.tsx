@@ -14,6 +14,7 @@
  * same way T-090's 404 does not distinguish "never existed" from "moved".
  */
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -22,6 +23,7 @@ import { readNoticeDetail } from "../read";
 import { env } from "@/lib/env";
 import { t } from "@/lib/i18n";
 import { isLocale, localizePath, type Locale } from "@/lib/locale";
+import { contentPageMetadata } from "@/lib/seo";
 
 /** Page-specific copy not already in `src/i18n/*.json`. */
 const COPY: Readonly<
@@ -43,6 +45,43 @@ const COPY: Readonly<
     facebook: "Facebook",
   },
 };
+
+/**
+ * Metadata for one notice (T-100).
+ *
+ * The canonical URL carries **this locale's** slug, which is the whole reason
+ * `read.ts` refuses to fall a slug back: the Bangla and English notices are
+ * genuinely different URLs, and a canonical built from the requested slug is
+ * the only one that can be reciprocal with the other locale's.
+ *
+ * The `hreflang` set, though, is built from the *requested* path — so an
+ * English notice at `/en/notices/exam-routine` advertises a Bangla alternate at
+ * `/notices/exam-routine`, which may not exist, because Bangla's slug for that
+ * notice is its own. Emitting a per-locale alternates map needs both slugs, and
+ * that is a second read this card's Files list has no room for; it is recorded
+ * in the session log rather than half-built here. A crawler that follows a
+ * missing alternate gets T-090's 404, which is the correct answer.
+ *
+ * A slug that resolves to nothing returns empty metadata and lets the component
+ * below produce the 404.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; slug: string }>;
+}): Promise<Metadata> {
+  const { locale: segment, slug } = await params;
+  if (!isLocale(segment)) return {};
+
+  const notice = await readNoticeDetail(segment, slug);
+  if (notice === null) return {};
+
+  return contentPageMetadata({
+    locale: segment,
+    path: `/notices/${notice.slug}`,
+    title: notice.title,
+  });
+}
 
 export default async function NoticeDetailPage({
   params,

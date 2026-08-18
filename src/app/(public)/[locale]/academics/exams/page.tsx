@@ -7,6 +7,7 @@
  * stays a Server Component that reads `searchParams`.
  */
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -15,6 +16,7 @@ import { isLocale, localizePath, type Locale } from "@/lib/locale";
 
 import { AcademicYearBanner } from "../AcademicYearBanner";
 import { readCurrentYear, readExams, type ExamRow } from "../read";
+import { staticPageMetadata } from "@/lib/seo";
 
 const COPY: Readonly<
   Record<Locale, { yearPrefix: string; allClasses: string; time: string; date: string }>
@@ -27,6 +29,39 @@ const COPY: Readonly<
     date: "Date",
   },
 };
+
+/**
+ * No `generateStaticParams` and no `revalidate` here, deliberately (T-103).
+ *
+ * This page reads `searchParams`, which opts it into dynamic rendering: Next
+ * cannot prerender a route whose output depends on a query string it has not
+ * seen. A `revalidate` export on a dynamically rendered page is inert, and
+ * `generateStaticParams` would advertise a static generation that never happens.
+ *
+ * §A-11's "0 DB queries on a cache hit" still holds, and holds through the
+ * **data** cache rather than the full-route cache: every read below is wrapped
+ * in `cachedRead` and tagged, so a request re-renders the markup but answers
+ * from cached rows without touching Postgres. The rendering cost is real; the
+ * database cost is not.
+ */
+
+/**
+ * This route has no `pages` row, so its title is the §A-7.2 static UI string
+ * for it plus the school's name — never an invented description (T-100).
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) return {};
+  return staticPageMetadata({
+    locale,
+    path: "/academics/exams",
+    title: "public.academics.exams",
+  });
+}
 
 export default async function ExamsPage({
   params,

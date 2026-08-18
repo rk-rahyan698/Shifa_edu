@@ -23,23 +23,54 @@
  * conditional-render guard.
  */
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { FeatureGrid, type FeatureGridItem } from "@/components/public/FeatureGrid";
 import { HeroSlider, type HeroSlideItem } from "@/components/public/HeroSlider";
 import { StatsBar, type StatItem } from "@/components/public/StatsBar";
-import { cachedRead, MODULE_TAGS, SITE_SETTINGS_TAG } from "@/lib/cache";
+import { MODULE_TAGS, SITE_SETTINGS_TAG, cachedRead, localeParams } from "@/lib/cache";
 import { fallbackLangAttr, resolveTranslation, t, type ResolvedText } from "@/lib/i18n";
 import { isLocale, localizePath, type Locale } from "@/lib/locale";
 import { prisma } from "@/lib/prisma";
 import { publicUrl } from "@/lib/storage";
+import { jsonLdScript, pageMetadata, readOrganizationJsonLd } from "@/lib/seo";
 
 /** Page-specific copy not already in `src/i18n/*.json` (none of it is shared). */
 const COPY: Readonly<Record<Locale, { glanceHeading: string }>> = {
   bn: { glanceHeading: "এক নজরে প্রতিষ্ঠান" },
   en: { glanceHeading: "School at a glance" },
 };
+
+/**
+ * §A-11: statically generated per locale, revalidated by cache tag on save
+ * (T-103). `localeParams` keeps the routed locale list in `src/lib/locale.ts`.
+ */
+export function generateStaticParams(): { locale: Locale }[] {
+  return localeParams();
+}
+
+/** The time-based backstop. See `PUBLIC_REVALIDATE_SECONDS` for why it exists. */
+export const revalidate = 3600;
+
+/**
+ * Metadata for this page comes from its `pages` row (§B-6) — the school's own
+ * `meta_title` and `meta_description`, per locale. `pageMetadata` also emits the
+ * canonical URL and the reciprocal `hreflang` set (T-100).
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  // A segment that is not a locale has no page behind it; the component below
+  // calls `notFound()`. Returning empty metadata rather than throwing keeps the
+  // 404 the visible failure.
+  if (!isLocale(locale)) return {};
+  return pageMetadata("home", locale);
+}
 
 export default async function HomePage({
   params,
@@ -52,16 +83,33 @@ export default async function HomePage({
   const locale: Locale = segment;
   const copy = COPY[locale];
 
-  const [hero, home, stats, notices, gallery] = await Promise.all([
+  const [hero, home, stats, notices, gallery, organization] = await Promise.all([
     readHero(locale),
     readIntroAndFeatures(locale),
     readStats(locale),
     readLatestNotices(locale),
     readGalleryPreview(locale),
+    readOrganizationJsonLd(locale),
   ]);
 
   return (
     <div>
+      {/*
+        §P-9's JSON-LD row: the `EducationalOrganization` node, on the home page
+        and only there — it describes the institution, not this page, and one
+        copy per site is what a crawler expects (T-100). Every field in it is
+        conditional on the school having entered the value; see
+        `readOrganizationJsonLd`. The serializer escapes `<`, so no field value
+        can close the script element early.
+      */}
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger -- JSON-LD has no other
+        // insertion point in React, and the payload is JSON.stringify output
+        // with `<` escaped, not user HTML.
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(organization) }}
+      />
+
       <HeroSlider
         slides={hero}
         previousLabel={t(locale, "common.actions.previous")}

@@ -15,6 +15,7 @@
  * links to the privacy policy.
  */
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -22,6 +23,7 @@ import { cachedRead, SITE_SETTINGS_TAG } from "@/lib/cache";
 import { resolveTranslation, t } from "@/lib/i18n";
 import { isLocale, localizePath, type Locale } from "@/lib/locale";
 import { prisma } from "@/lib/prisma";
+import { pageMetadata } from "@/lib/seo";
 
 /** Page-specific copy not already in `src/i18n/*.json`. */
 const COPY: Readonly<
@@ -57,6 +59,39 @@ const COPY: Readonly<
     optional: "Optional",
   },
 };
+
+/**
+ * No `generateStaticParams` and no `revalidate` here, deliberately (T-103).
+ *
+ * This page reads `searchParams`, which opts it into dynamic rendering: Next
+ * cannot prerender a route whose output depends on a query string it has not
+ * seen. A `revalidate` export on a dynamically rendered page is inert, and
+ * `generateStaticParams` would advertise a static generation that never happens.
+ *
+ * §A-11's "0 DB queries on a cache hit" still holds, and holds through the
+ * **data** cache rather than the full-route cache: every read below is wrapped
+ * in `cachedRead` and tagged, so a request re-renders the markup but answers
+ * from cached rows without touching Postgres. The rendering cost is real; the
+ * database cost is not.
+ */
+
+/**
+ * Metadata for this page comes from its `pages` row (§B-6) — the school's own
+ * `meta_title` and `meta_description`, per locale. `pageMetadata` also emits the
+ * canonical URL and the reciprocal `hreflang` set (T-100).
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  // A segment that is not a locale has no page behind it; the component below
+  // calls `notFound()`. Returning empty metadata rather than throwing keeps the
+  // 404 the visible failure.
+  if (!isLocale(locale)) return {};
+  return pageMetadata("contact", locale);
+}
 
 export default async function ContactPage({
   params,

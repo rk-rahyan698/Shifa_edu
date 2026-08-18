@@ -7,6 +7,7 @@
  * downloadable and current by construction.
  */
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { t } from "@/lib/i18n";
@@ -14,6 +15,8 @@ import { isLocale, type Locale } from "@/lib/locale";
 
 import { AcademicYearBanner } from "../AcademicYearBanner";
 import { readCurrentYear, readRoutines } from "../read";
+import { staticPageMetadata } from "@/lib/seo";
+import { localeParams } from "@/lib/cache";
 
 const COPY: Readonly<
   Record<Locale, { yearPrefix: string; sectionLabel: string; download: string }>
@@ -21,6 +24,35 @@ const COPY: Readonly<
   bn: { yearPrefix: "শিক্ষাবর্ষ", sectionLabel: "শাখা", download: "ডাউনলোড" },
   en: { yearPrefix: "Academic year", sectionLabel: "Section", download: "Download" },
 };
+
+/**
+ * §A-11: statically generated per locale, revalidated by cache tag on save
+ * (T-103). `localeParams` keeps the routed locale list in `src/lib/locale.ts`.
+ */
+export function generateStaticParams(): { locale: Locale }[] {
+  return localeParams();
+}
+
+/** The time-based backstop. See `PUBLIC_REVALIDATE_SECONDS` for why it exists. */
+export const revalidate = 3600;
+
+/**
+ * This route has no `pages` row, so its title is the §A-7.2 static UI string
+ * for it plus the school's name — never an invented description (T-100).
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) return {};
+  return staticPageMetadata({
+    locale,
+    path: "/academics/routines",
+    title: "public.academics.routine",
+  });
+}
 
 export default async function RoutinesPage({
   params,

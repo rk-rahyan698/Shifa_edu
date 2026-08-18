@@ -25,11 +25,14 @@
  * controller is worse than one that admits it does not know yet.
  */
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CookieNotice } from "@/components/public/CookieNotice";
 import { isLocale, localizePath, type Locale } from "@/lib/locale";
+import { staticPageMetadata } from "@/lib/seo";
+import { localeParams } from "@/lib/cache";
 
 /**
  * Whether the legal review has happened. Set to `false` by a human as part of
@@ -218,6 +221,35 @@ const COPY: Readonly<Record<Locale, PrivacyCopy>> = {
     termsLink: "Terms of use",
   },
 };
+
+/**
+ * §A-11: statically generated per locale, revalidated by cache tag on save
+ * (T-103). `localeParams` keeps the routed locale list in `src/lib/locale.ts`.
+ */
+export function generateStaticParams(): { locale: Locale }[] {
+  return localeParams();
+}
+
+/** The time-based backstop. See `PUBLIC_REVALIDATE_SECONDS` for why it exists. */
+export const revalidate = 3600;
+
+/**
+ * This route has no `pages` row, so its title is the §A-7.2 static UI string
+ * for it plus the school's name — never an invented description (T-100).
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isLocale(locale)) return {};
+  return staticPageMetadata({
+    locale,
+    path: "/privacy",
+    title: { literal: COPY[locale].title },
+  });
+}
 
 export default async function PrivacyPage({
   params,

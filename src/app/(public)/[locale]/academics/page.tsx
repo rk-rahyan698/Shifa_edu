@@ -7,6 +7,7 @@
  * same directory; this page only links to them.
  */
 
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -16,6 +17,8 @@ import { isLocale, localizePath, type Locale } from "@/lib/locale";
 
 import { AcademicYearBanner } from "./AcademicYearBanner";
 import { readAcademicsMain, readCurrentYear, type ClassGradeRow } from "./read";
+import { pageMetadata } from "@/lib/seo";
+import { localeParams } from "@/lib/cache";
 
 const COPY: Readonly<
   Record<
@@ -44,6 +47,35 @@ const COPY: Readonly<
     optional: "Optional",
   },
 };
+
+/**
+ * §A-11: statically generated per locale, revalidated by cache tag on save
+ * (T-103). `localeParams` keeps the routed locale list in `src/lib/locale.ts`.
+ */
+export function generateStaticParams(): { locale: Locale }[] {
+  return localeParams();
+}
+
+/** The time-based backstop. See `PUBLIC_REVALIDATE_SECONDS` for why it exists. */
+export const revalidate = 3600;
+
+/**
+ * Metadata for this page comes from its `pages` row (§B-6) — the school's own
+ * `meta_title` and `meta_description`, per locale. `pageMetadata` also emits the
+ * canonical URL and the reciprocal `hreflang` set (T-100).
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  // A segment that is not a locale has no page behind it; the component below
+  // calls `notFound()`. Returning empty metadata rather than throwing keeps the
+  // 404 the visible failure.
+  if (!isLocale(locale)) return {};
+  return pageMetadata("academics", locale);
+}
 
 export default async function AcademicsPage({
   params,

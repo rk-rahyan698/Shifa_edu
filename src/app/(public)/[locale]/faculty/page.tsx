@@ -23,14 +23,16 @@
  * theirs.
  */
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { FacultyCard, type FacultySubjectView } from "@/components/public/FacultyCard";
-import { cachedRead, MODULE_TAGS } from "@/lib/cache";
+import { MODULE_TAGS, cachedRead, localeParams } from "@/lib/cache";
 import { fallbackLangAttr, resolveTranslation, t, type ResolvedText } from "@/lib/i18n";
 import { isLocale, type Locale } from "@/lib/locale";
 import { prisma } from "@/lib/prisma";
 import { publicUrl } from "@/lib/storage";
+import { pageMetadata } from "@/lib/seo";
 
 /** Page-specific copy not already in `src/i18n/*.json`. */
 const COPY: Readonly<Record<Locale, { yearsExperience: (years: string) => string }>> = {
@@ -39,6 +41,35 @@ const COPY: Readonly<Record<Locale, { yearsExperience: (years: string) => string
     yearsExperience: (years) => `${years} year${years === "1" ? "" : "s"}' experience`,
   },
 };
+
+/**
+ * §A-11: statically generated per locale, revalidated by cache tag on save
+ * (T-103). `localeParams` keeps the routed locale list in `src/lib/locale.ts`.
+ */
+export function generateStaticParams(): { locale: Locale }[] {
+  return localeParams();
+}
+
+/** The time-based backstop. See `PUBLIC_REVALIDATE_SECONDS` for why it exists. */
+export const revalidate = 3600;
+
+/**
+ * Metadata for this page comes from its `pages` row (§B-6) — the school's own
+ * `meta_title` and `meta_description`, per locale. `pageMetadata` also emits the
+ * canonical URL and the reciprocal `hreflang` set (T-100).
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  // A segment that is not a locale has no page behind it; the component below
+  // calls `notFound()`. Returning empty metadata rather than throwing keeps the
+  // 404 the visible failure.
+  if (!isLocale(locale)) return {};
+  return pageMetadata("faculty", locale);
+}
 
 export default async function FacultyPage({
   params,

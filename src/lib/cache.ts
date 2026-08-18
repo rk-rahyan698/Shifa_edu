@@ -26,7 +26,7 @@
  * that calls `revalidateForModule` is T-038.
  */
 
-import { LOCALES, localizePath, type Locale } from "@/lib/locale";
+import { LOCALES, localizePath, resolveLocaleFromPath, type Locale } from "@/lib/locale";
 import { MODULES, type ModuleCode } from "@/lib/modules";
 
 /**
@@ -178,6 +178,11 @@ export async function revalidateForModule(
     revalidateTag(tag);
   }
 
+  // NOTE (T-103): these are public URLs, and for Bangla they are not the paths
+  // Next revalidates. `routeTargetsForModule` below computes the correct ones
+  // and is deliberately **not** wired in here — see its docblock for the
+  // measurement and for why the swap needs its own task id. Tag invalidation
+  // above is what actually carries every change today.
   for (const target of plan.paths) {
     revalidatePath(target.path, target.type);
   }
@@ -232,3 +237,130 @@ export function cachedRead<Args extends readonly unknown[], Result>(
 export function localeKey(name: string, locale: Locale): string {
   return `${name}:${locale}`;
 }
+
+// ── ISR wiring (T-103) ──────────────────────────────────────────────────
+
+/**
+ * The `generateStaticParams` result for the public `[locale]` segment.
+ *
+ * §A-11's first row: public pages are generated **per locale**. Every public
+ * page exports `generateStaticParams` returning this, so the routed locale list
+ * lives in `src/lib/locale.ts` and nowhere else — adding Arabic must not mean
+ * finding fourteen page files.
+ *
+ * ADR-005's rewrite is what makes the returned values look surprising: the
+ * params are the *internal* segment values, `bn` and `en`, and the middleware
+ * maps the public `/notices` onto the prerendered `/bn/notices`. `/bn/notices`
+ * is still not a public URL — the layout's `isLocale` guard 404s an externally
+ * requested one — but it is the path the build writes and the cache keys on.
+ */
+export function localeParams(): { locale: Locale }[] {
+  return LOCALES.map((locale) => ({ locale }));
+}
+
+/**
+ * The App Router path that actually serves a public path in one locale.
+ *
+ * **This is not `localizePath`, and the difference is the whole point.**
+ * `localizePath` builds the URL a visitor sees, where Bangla is unprefixed:
+ * `/about`. The App Router never sees that path — `src/middleware.ts` rewrites
+ * it onto the required `[locale]` segment, so the route Next builds, stores and
+ * keys its cache on is `/bn/about` (ADR-005 route shape, decided 2026-08-17).
+ *
+ * `revalidatePath` takes a **route** path, not a URL. Measured on the T-103
+ * build: `.next/server/app/bn/about.meta` carries the implicit tag
+ * `_N_T_/bn/about`, and the prerender manifest has entries for `/bn/about` and
+ * `/en/about` with no `/about` among them. So `revalidatePath('/about')` —
+ * which is what `pathsForModule` yields for Bangla — computes a tag nothing
+ * carries and silently does nothing, while the English call happens to work
+ * because English's URL and route path are the same string.
+ *
+ * That asymmetry is invisible: no error, no warning, just a Bangla page that
+ * keeps serving yesterday's content. It is exactly the failure ADR-005's
+ * unprefixed default makes easy to write and hard to notice.
+ *
+ * `pathsForModule` above is left alone — it answers "which public URLs does
+ * this module affect?", which is a real question with a different answer, and
+ * T-036's suite pins it. This is the answer to "which route paths must be
+ * revalidated?", and it is what `revalidateForModule` uses.
+ */
+export function internalRoutePath(publicPath: string, locale: Locale): string {
+  const { pathname } = resolveLocaleFromPath(publicPath);
+  return pathname === "/" ? `/${locale}` : `/${locale}${pathname}`;
+}
+
+/**
+ * The route paths a module write must revalidate, per locale.
+ *
+ * **Built, tested and not yet wired in.** `revalidateForModule` still passes
+ * `pathsForModule`'s public URLs to `revalidatePath`, because two `done` tasks
+ * assert exactly that — `src/lib/mutate.test.ts` (T-038) expects `/notices` and
+ * `src/lib/modules/home/actions.test.ts` (T-062) expects `/` — and neither file
+ * is in T-103's Files list. Global rule: a done task's output is superseded by a
+ * new task id, never edited in place. This function is the replacement that task
+ * wires in; the two assertions become `/bn/notices` and `/bn` when it does.
+ *
+ * Nothing is broken while it waits. Every prerendered page's cache entry carries
+ * the data tags of the reads that built it — measured on the T-103 build,
+ * `.next/server/app/bn.meta` lists `site:settings home:content notice:list
+ * gallery:photos gallery:videos` — so `revalidateTag` reaches both locales and
+ * carries every admin save on its own. The path calls are redundant belt to that
+ * pair of braces, and the redundancy is what is currently misaimed for Bangla.
+ *
+ * Mirrors `pathsForModule`'s expansion of §A-5.2's three declared shapes, then
+ * maps each onto the segment that serves it.
+ *
+ * `'all'` keeps the root layout target — every route in the app nests under
+ * `src/app/layout.tsx`, so one `layout` revalidation there reaches the
+ * unlocalized routes too (`/login`, `/reset-password`) — and adds an explicit
+ * per-locale layout target so the public subtree is covered without depending
+ * on how far the root tag propagates.
+ */
+export function routeTargetsForModule(
+  moduleCode: ModuleCode,
+): readonly RevalidateTarget[] {
+  const declared = MODULES[moduleCode].revalidates;
+  const targets: RevalidateTarget[] = [];
+
+  const add = (path: string, type: RevalidateType): void => {
+    if (!targets.some((t) => t.path === path && t.type === type)) {
+      targets.push({ path, type });
+    }
+  };
+
+  if (declared === "all") {
+    add("/", "layout");
+    for (const locale of LOCALES) add(`/${locale}`, "layout");
+    return targets;
+  }
+
+  for (const declaredPath of declared) {
+    const isSubtree = declaredPath.endsWith("/**");
+    const bare = isSubtree ? declaredPath.slice(0, -3) : declaredPath;
+    const type: RevalidateType = isSubtree ? "layout" : "page";
+
+    for (const locale of LOCALES) {
+      add(internalRoutePath(bare === "" ? "/" : bare, locale), type);
+    }
+  }
+
+  return targets;
+}
+
+/**
+ * The ISR backstop for a public page, in seconds.
+ *
+ * Correctness comes from tags, not from this: `revalidateForModule` runs on
+ * every admin save (stage 6 of the write pipeline), so an edit is live within
+ * one request without waiting for any window to lapse. What a time window
+ * catches is what nobody triggers — a notice whose `published_at` falls due,
+ * an academic year that rolls over — where the page's content changes without
+ * anyone saving anything.
+ *
+ * One hour is short enough that a scheduled notice is never more than an hour
+ * late and long enough that the steady state is still a cache hit. Next
+ * requires the `revalidate` export to be a literal, so each page writes `3600`
+ * rather than importing this; the constant is here so the number has one
+ * documented home and `grep` finds every page that departs from it.
+ */
+export const PUBLIC_REVALIDATE_SECONDS = 3600;

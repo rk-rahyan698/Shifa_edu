@@ -1729,3 +1729,191 @@ stray tracked file named `on` at the repo root is still there. `/notices`,
 `/en/notices` and every other still-unbuilt M6 route return 200 for the
 bilingual 404 rather than a real 404 status — T-090's pre-existing, documented
 defect, unrelated to this batch.
+
+## 2026-08-18 — B-9: T-085, T-086, T-087, T-088
+
+**by:** T-088 · **next:** B-10 (T-100 SEO metadata/hreflang/sitemap/JSON-LD,
+T-103 ISR wiring)
+
+Faculty, Notices (list + detail), Gallery and Contact — the four remaining
+public pages. `progress.done` is 60 / 78. **M6 is now done**: T-080 through
+T-090 are all `done`.
+
+### T-085 · Public: Faculty
+
+One file pair, per the card's Files line: `faculty/page.tsx` and
+`FacultyCard.tsx`. The query joins `faculty` → `faculty_translations` →
+`designations` → `media_assets`/`faculty_subjects` and never touches
+`faculty_private` — confirmed both by reading the query (no such relation is
+ever included) and by grepping a live response body for `personal_phone`/
+`personal_email`, which is the card's own Verify line.
+
+**Consent is stated twice, deliberately.** `ck_faculty_publish_consent`
+already guarantees `status_code = 'published'` implies `publish_consent_at IS
+NOT NULL`, but §P-6.6 names the condition as two explicit clauses, so the
+query filters on both rather than leaning on the CHECK alone — the redundant
+clause costs one line and survives a future migration that loosens it.
+`ck_faculty_photo_consent` is *not* restated the same way: a non-null
+`photo_media_id` already guarantees photo consent, so `FacultyCard` renders a
+photo whenever one is attached, no second check.
+
+### T-086 · Public: Notices list + detail
+
+`notices/read.ts`, `notices/page.tsx` and `notices/[slug]/page.tsx`, sharing
+one file under the card's `notices/**` glob — the same choice T-083's
+Academics pages made.
+
+**Slugs do not fall back, and that is a deliberate departure from every other
+page in M6.** Every other translatable field resolves through §A-7.3's
+Bangla fallback, but `UNIQUE (locale_code, slug)` means a locale with no
+`notice_translations` row has no slug to fall back *to* — there is no URL to
+construct. The list query therefore filters to
+`noticeTranslations: { some: { localeCode: locale } }` rather than reading
+through the fallback, and the detail page's `findUnique` on
+`localeCode_slug` returns nothing for a slug that belongs to the other
+locale. This is what the card's own Verify names — "per-locale slugs
+resolve" — read literally: a Bangla-only notice has no English page at all,
+rather than an English-looking URL quietly serving Bangla content.
+
+Pagination (10/page) and the category filter both live in the URL
+(`?category=&page=`) and a requested page past the true last page is
+clamped by re-reading at the clamped value, rather than showing an empty
+"page 9 of 3" when a shared link goes stale. Share links (WhatsApp,
+Facebook) are built from `env.NEXT_PUBLIC_SITE_URL` + the locale-correct
+canonical path; attachment labels use the ordinary §A-7.3 fallback, since an
+attachment's identity is its file, not its label.
+
+### T-087 · Public: Gallery
+
+One route only, `gallery/page.tsx`, query-filtered — `?type=photos|videos`
+(default `photos`) and `?category=` (photos only; `gallery_videos` carries no
+category column). `GalleryGrid`, `Lightbox` and `VideoModal` are the three
+components the card names; `GalleryGrid` is the one Client Component on the
+page (`"use client"`) and owns the single piece of interactive state — which
+tile, if any, is open — dispatching to `Lightbox` or `VideoModal` by its
+`kind` prop rather than needing a fourth file to hold that state.
+
+**Consent is the query, not a re-check**, mirroring T-082's committee-member
+economy: `ck_photo_subject_consent` guarantees `is_active` implies
+`subject_consent_at IS NOT NULL`, so `isActive: true` is both the "published"
+filter and the consent filter.
+
+**Embed URLs are built here**, per §B-12's own migration comment naming this
+page as the job: `video_providers.embed_url_template`'s `{id}` placeholder is
+substituted with `provider_video_id` (constrained to `/^[A-Za-z0-9_-]+$/` by
+T-034, so no further encoding is needed) and passed to `VideoModal` already
+resolved — nothing is stored.
+
+`Lightbox` and `VideoModal` use literal `bg-black/85` / `bg-white/10` rather
+than the `ink`/`surface` design tokens: `tailwind.config.ts`'s own comment
+says the token colours resolve through CSS custom properties and do not
+support the `/opacity` slash syntax, and a translucent scrim is exactly what
+these overlays need. Both are Escape-closable and Left/Right-arrow
+navigable (photos only), move focus onto the dialog on open, and return it
+to the triggering thumbnail on close — read from the markup and the effect
+hooks, not driven by an actual keyboard session (no browser on this
+machine, same limitation every earlier batch has recorded).
+
+Verified live: `/gallery/photos` and `/gallery/videos` (the two routes
+ADR-006 says must not exist) do not resolve to a gallery page — they fall
+through to T-090's 404, same as any other unbuilt path.
+
+### T-088 · Public: Contact + inquiry form
+
+`contact/page.tsx` and `api/contact/route.ts` — exactly the card's two Files,
+which shaped the design: the form is a plain `<form method="post"
+action="/api/contact">` with a hidden `locale` field, no client JavaScript
+and no third component file. The route validates, rate-limits and persists,
+then answers with a `303` redirect carrying `?sent=1` or `?error=…`, which
+the page reads from `searchParams` to show a banner — the same
+progressive-enhancement shape T-040's login endpoint uses HTTP status and
+`Retry-After` for, applied here to a form that works with JavaScript
+disabled.
+
+**Rate-limited before validated**, unconditionally — every POST charges the
+3/hour/IP bucket (§A-12) whatever it contains, the same ordering principle
+T-040 uses for the (much more expensive) bcrypt stage. `ip_hash` is a plain
+unsalted SHA-256 of the request IP: §B-13's migration comment calls it
+"hashed, not raw: data minimisation," not a defence against a targeted
+lookup, and no salt-bearing env var exists in `env.ts`'s schema for this
+card's Files list to add one to. `ipHash`/`userAgent`/`consentGivenAt`/
+`submittedAt` are never accepted from the form, per `contactSubmissionSchema`'s
+own header.
+
+### Verification
+
+`npx tsc --noEmit`, `npx eslint .` clean on the whole repo. `npx prettier
+--check` clean on all eleven new files (`--write` was needed on nine of
+them first — normal Prettier reformatting, not a defect); the same
+pre-existing warnings on 26 files this batch did not touch were left alone,
+same call every earlier session has made. `npx vitest run` **357 passing**,
+unchanged — no pure-logic module was added this batch.
+
+All four pages were verified on a built server (`next build` + `next
+start`) against the live `shifa_dev` database, twice: once against the
+seed's baseline (0 faculty, 0 notices, 0 gallery photos/videos, 0 contact
+channels) and once with one throwaway row inserted per table — a published,
+consented faculty member with a subject and a photo; a published, pinned
+notice with a category, a bn slug and an en slug, and an attachment; a
+consented gallery photo in a categorized album and an active video; a
+public contact channel and site-settings address/office-hours translations.
+Baseline confirmed each page's own empty state (`EmptyState` for notices and
+gallery, no grid at all for faculty) with zero server errors in either
+locale; the populated pass confirmed the seeded content rendering correctly
+in both locales, the private-field leak check on faculty, the per-locale
+slug isolation on notices (an English slug requested at the unprefixed
+Bangla path resolves to nothing — falls through to the 404, not to the
+notice), and the category filter's true exclusion on gallery (a photo tagged
+`campus` did not appear under `?category=events`). All test rows were
+deleted afterward and row counts confirmed back to the seed baseline.
+
+**The contact form's full HTTP contract was exercised directly**, not just
+read from the code: a submission missing consent redirects to
+`?error=validation` and writes no row; a bad-format phone number and a
+9-character message are both refused the same way; a valid submission
+redirects to `?sent=1` and writes exactly one row with a 64-character hex
+`ip_hash` (confirmed against the client's raw IP — not equal to it, and the
+right length for SHA-256); the 4th submission within an hour is refused with
+`303` to `?error=rate_limited` carrying `Retry-After`, and the 3rd is
+accepted — `CONTACT_LIMIT = 3` from T-033, exercised end to end rather than
+only unit-level.
+
+**A caching detour, not a code defect, worth recording for the next session
+that seeds test data against a built server.** `cachedRead`'s underlying
+`unstable_cache` persists to `.next/cache` on disk, not only in memory —
+restarting the `next start` process after inserting rows was **not**
+enough to see them; the stale "empty" result survived the restart because
+it was read back from the filesystem cache. `rm -rf .next/cache` before
+restarting was what actually cleared it. Separately, an unrelated `next
+dev` process was already listening on port 3000 at the start of this
+session (not started by this one) and was stopped to free the port for
+`next start`; it was not restarted afterward, so `npm run dev` may be
+wanted before the next interactive session on this machine.
+
+### Not verified
+
+**Still no browser**, the limitation every M6 batch has recorded: `Lightbox`'s
+arrow-key navigation and focus return, `VideoModal`'s Escape handling, and
+Bangla string-length overflow at 360px (the notices category-pill row and
+the faculty card grid are the two most likely to show it) were all read from
+the markup and effect hooks, not driven by an actual keyboard or
+screen-reader session.
+
+**The notice attachment and admission-form `download` attribute** question
+T-084 raised recurs here unresolved: `publicUrl` points at the storage
+endpoint's own origin, and cross-origin `download` behaviour was not
+confirmed in a real browser.
+
+### Unchanged from earlier batches
+
+`/en/login` still 404s for an English admin whose session expires. `<html
+lang>` is still hardcoded `bn` in the root layout, flagged for T-100. The
+stray tracked file named `on` at the repo root is still there. T-090's
+pre-existing, documented defect — `loading.tsx` in the parent segment commits
+the response status before `notFound()` throws, so a 404 renders correct
+bilingual content at HTTP 200 — now covers every path this batch added:
+`/notices/<wrong-locale-slug>`, `/gallery/photos`, `/gallery/videos`, and any
+notice slug that does not exist. Confirmed by reading the response body, not
+just the status code, on every case above; none of them leak the wrong
+content, only the status code is wrong, and it was already wrong before this
+batch.

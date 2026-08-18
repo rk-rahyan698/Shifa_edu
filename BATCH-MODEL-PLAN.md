@@ -51,7 +51,7 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | **B-6** | T-080 ✅, T-089 ✅, T-090 ✅ | Public shell, legal pages, error states | **Opus** | High | Medium | Locale routing is asymmetric by ADR-005 (`/` = bn, `/en` = en), the switcher must rewrite the path and never set a cookie, and a render-side sanitization layer is introduced. Foundation for all 10 public pages. | **Completed** |
 | **B-7** | T-081 ✅, T-082 ✅ | Public home, about | **Sonnet** | Medium | Low-Medium | Renders content the admin side already models. The one rule that matters — an empty or placeholder-marked section must not render at all — is explicit in both contracts. | **Completed** |
 | **B-8** | T-083 ✅, T-084 ✅ | Public academics, admission | **Sonnet** | Medium | Low-Medium | Consumes contracts B-3 already defined, including the admission-open expression. Must scope to the current academic year and show it. | **Completed** |
-| **B-9** | T-085, T-086, T-087, T-088 | Faculty, notices, gallery, contact | **Sonnet** | Medium | Medium | Four repetitions of one list-and-detail shape. T-088's inquiry form adds validation and rate limiting, both already built in T-033/T-020. | Pending |
+| **B-9** | T-085 ✅, T-086 ✅, T-087 ✅, T-088 ✅ | Faculty, notices, gallery, contact | **Sonnet** | Medium | Medium | Four repetitions of one list-and-detail shape. T-088's inquiry form adds validation and rate limiting, both already built in T-033/T-020. | **Completed** — M6 closed |
 | **B-10** | T-100, T-103 | SEO metadata, hreflang, sitemap, JSON-LD; ISR | **Opus** | High | Medium | hreflang over an asymmetric locale scheme is easy to get quietly wrong, and it is wrong in search results rather than in a test. Spans every page plus the revalidation that keeps them fresh. | Pending |
 | **B-11** | T-101, T-102 | Responsive images, font subsetting | **Sonnet** | Low-Medium | Low | Two narrow, well-bounded delivery tasks. Bangla subsetting needs care but the target is measurable. | Pending |
 | **B-12** | T-104 | Accessibility remediation, both locales | **Opus** | High | Medium | A whole-site audit with the loosest scope of any card — judging what to fix, across two scripts and two locales, is the work. | Pending |
@@ -95,10 +95,11 @@ exists, the contract is explicit, and verification is objective.
 - **Completed** — all tasks verified, `build-state.json` updated, awaiting or
   having received the human's single batch commit
 
-**B-1 through B-8 are complete.** M4 and M5 are closed; B-6 closed the public
-shell plus legal/error states, B-7 closed Home and About, and B-8 closed
-Academics and Admission. The next batch is **B-9** (T-085 Faculty, T-086
-Notices, T-087 Gallery, T-088 Contact) — the four remaining public pages.
+**B-1 through B-9 are complete.** M4, M5 and now M6 are closed; B-6 closed the
+public shell plus legal/error states, B-7 closed Home and About, B-8 closed
+Academics and Admission, and B-9 closed Faculty, Notices, Gallery and
+Contact — the last four public pages. The next batch is **B-10** (T-100 SEO
+metadata/hreflang/sitemap/robots/JSON-LD, T-103 ISR wiring), opening M7.
 
 ### Two findings from B-1 that change how later batches should be run
 

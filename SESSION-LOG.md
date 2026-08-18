@@ -1917,3 +1917,216 @@ notice slug that does not exist. Confirmed by reading the response body, not
 just the status code, on every case above; none of them leak the wrong
 content, only the status code is wrong, and it was already wrong before this
 batch.
+
+---
+
+## 2026-08-18 — B-10: T-100, T-103
+
+**by:** T-103 · **next:** B-11 (T-101 responsive images, T-102 font subsetting)
+
+SEO metadata, hreflang, sitemap, robots and JSON-LD, then the ISR wiring that
+keeps them fresh. `progress.done` is 62 / 78. **M7 is not closed** — T-101,
+T-102 and T-104 remain.
+
+**A database exists on this machine now.** Every session since B-1 has recorded
+that it did not, and every M5/M6 card was verified without one. Postgres is on
+5432, seeded, and reachable; both cards in this batch were verified against it
+and against a real production build, not by reasoning. That changes what the
+remaining batches can claim, and B-11 onward should assume live verification is
+available rather than repeat the caveat.
+
+### T-100 · SEO: metadata, hreflang, sitemap, robots, JSON-LD
+
+`src/lib/seo.ts`, `src/app/sitemap.ts`, `src/app/robots.ts`, and a
+`generateMetadata` export on all fourteen public pages.
+
+**The Contract holds, and it is measured.** `/` and `/en` emit different
+canonicals (`…/` and `…/en`) and the identical, reciprocal alternates map —
+`bn` → `/`, `en` → `/en`, `x-default` → `/`. Every alternates map is built by
+`alternatePaths` in `src/lib/locale.ts`, the same function the T-080 language
+switcher uses, so the two cannot disagree; `assertDistinct` throws if any
+future prefix change ever points two locales at one URL, which was the AUDIT
+B-3 defect. Checked live on `/`, `/en`, `/about`, `/en/about`,
+`/academics/exams`, `/en/academics/exams`, `/privacy` and `/en/terms`.
+
+**Titles come from three places, and never from invention.** The eight pages
+with a `pages` row (§B-6) use the school's own `meta_title`/`meta_description`.
+The three Academics sub-pages and the two legal pages have no row, so they
+compose `<nav label> — <school name>` from `src/i18n/*.json`, which §A-7.2
+classes as a static UI string, and emit **no description at all** rather than a
+plausible sentence. Live: `/academics/exams` is `পরীক্ষা — শিফা ইন্টারন্যাশনাল
+স্কুল`, `/en/academics/exams` is `Examinations — Shifa International School`.
+
+**Placeholders are emitted verbatim.** Every `page_translations.meta_title` in
+the seeded database is still `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, and that
+is what `<title>` and `og:title` carry today. This is the same decision
+`safe-html.ts` and T-081/T-082 already made — a marker nobody can see is a
+marker nobody replaces — and T-113's gate is what refuses to launch on it.
+
+**The sitemap withholds untranslated English, and only English.** 18 entries:
+13 Bangla (8 registered pages + 5 unregistered routes) and 5 English (the
+unregistered routes only). All eight English `pages` URLs are absent because
+every English `meta_title` is still a placeholder, which is §A-7.3's last row
+read literally. Bangla is never withheld — it is the required locale.
+
+The rule was extracted to `includeInSitemap` in `seo.ts` so it could be tested
+in both directions. That mattered: the DB is seeded entirely with placeholders,
+so the "included once translated" half has no live case to observe, and an
+attempt to write one real English title into the database was refused by the
+sandbox. The unit test covers what the live check could not.
+
+**No per-entry `hreflang` in the sitemap, deliberately.** The pages annotate
+both locales plus `x-default` (correctly — both URLs exist and are reciprocal),
+while the sitemap withholds untranslated English for crawl-budget reasons. Two
+annotations that disagree are worse than one, and Google accepts either form,
+so the `<link rel="alternate">` tags are the site's single annotation.
+
+**No fabricated `lastModified` on pages.** `pages`/`page_translations` carry no
+timestamp, so there is nothing true to put there; `new Date()` would tell a
+crawler every page changed at every rebuild. Notices have a real `updated_at`
+and get one.
+
+**JSON-LD emits only what the school has entered.** Live on `/`:
+`{"@type":"EducationalOrganization","name":"শিফা ইন্টারন্যাশনাল স্কুল",
+"url":"…/","foundingDate":"2020"}` — and the English page the same with the
+English name and `…/en`. No address, telephone, email, `sameAs` or `identifier`,
+because those rows are empty. Global rule 5 applies harder to structured data
+than to prose: an invented field there is a machine-readable claim.
+
+`robots.txt` disallows `/admin`, `/login`, `/reset-password`, `/api/` and
+`/bn/`, and names the sitemap. The list is deliberately short — `robots.txt` is
+world-readable, so every path in it is one a visitor can already discover.
+
+### T-103 · ISR wiring & on-demand revalidation
+
+`generateStaticParams` + `revalidate` on the nine static-capable public pages,
+`localeParams` and `PUBLIC_REVALIDATE_SECONDS` in `src/lib/cache.ts`.
+
+**Static generation per locale works, and the build proves it.** 25 static
+pages; every localized route appears twice — `/bn` and `/en`, `/bn/about` and
+`/en/about`, and so on through admission, faculty, both Academics sub-pages and
+both legal pages — each at `1h` revalidate. This is the first time §A-11's
+per-locale generation has actually been reachable: the optional catch-all
+rejected `generateStaticParams` outright, and the required `[locale]` segment
+ADR-005 approved is what restored it.
+
+**Four pages are dynamic, and that is correct rather than a shortfall.**
+`/notices`, `/gallery`, `/contact` and `/academics/exams` read `searchParams`,
+which opts Next out of prerendering — their filter state is in the URL by their
+own cards' contracts. They carry a comment saying so instead of a `revalidate`
+export that would be inert.
+
+**The Contract — 0 DB queries on a public cache hit — is measured, with a
+control.** Method: production build, `next start`, snapshot
+`SUM(seq_scan + idx_scan)` over every table in the `public` schema from
+`pg_stat_all_tables`, drive traffic, snapshot again.
+
+| what | requests | table scans |
+|---|---|---|
+| prerendered: `/ /en /about /en/about /faculty /en/faculty` | 60 | **0** |
+| dynamic, data-cached: `/notices /en/notices /gallery /contact` | 40 | **0** |
+| `/` alone | 100 | **0** |
+| *control* — `/admin` with distinct bogus session cookies | 100 | 50 |
+
+The control is the part that makes the zeroes mean anything: the same instrument
+registers 50 scans when the middleware's session lookup runs, so a zero is a
+zero and not a broken counter. Note the second row — the dynamically rendered
+pages are also at zero, because their reads go through `cachedRead` and answer
+from the data cache. They cost render time, not database time.
+
+**The query-count assertion could not be a vitest spec.** Measured, not assumed:
+`unstable_cache` throws outside a running Next server (it needs an incremental
+cache handler), so any in-process test of it would be testing a mock. The
+harness above was run against `next start` and then deleted; automating it is
+T-114's gate, which needs T-103.
+
+### The finding: Bangla revalidation paths do not name Bangla routes
+
+Not fixed here. It needs a task id, and the reasoning is below in full because
+the next session should not have to re-derive it.
+
+`revalidateForModule` calls `revalidatePath` with the **public URL**
+(`pathsForModule`), and ADR-005 makes that the wrong string for Bangla.
+Measured on the build:
+
+- `.next/prerender-manifest.json` has entries for `/bn/about` and `/en/about`.
+  There is no `/about` key, and no `/` key.
+- `.next/server/app/bn/about.meta` carries the implicit tag `_N_T_/bn/about`.
+
+So `revalidatePath('/about')` computes a tag nothing carries and does nothing,
+while `revalidatePath('/en/about')` works — English's URL and route path happen
+to be the same string, Bangla's do not. Every Bangla path target in the
+revalidation plan currently misses, silently, with no error.
+
+**Nothing is broken today, which is why this is a finding and not a block.**
+Tag invalidation carries every change on its own: `.next/server/app/bn.meta`
+lists the data tags `site:settings home:content notice:list gallery:photos
+gallery:videos`, and the English entry lists the identical set, so
+`revalidateTag('notice:list')` reaches `/` **and** `/en`. That is the card's
+Verify — "publishing a notice updates `/` and `/en` within one request" — and
+it is satisfied by the tag path. The path calls are redundant belt to that pair
+of braces; the redundancy is what is misaimed.
+
+`internalRoutePath` and `routeTargetsForModule` are the fix, built and tested in
+`src/lib/cache.ts` (this card's file) and **deliberately not wired in**. Wiring
+them changes two `done` tasks' assertions — `src/lib/mutate.test.ts` (T-038)
+expects `/notices`, `src/lib/modules/home/actions.test.ts` (T-062) expects `/` —
+and neither file is in T-103's Files list. The global rule is explicit: a done
+task's output is superseded by a new id, never edited in place. Both were run
+and both fail against the corrected mapping, which is the evidence the swap is
+a behaviour change and not a no-op.
+
+**The new task is one line of wiring and two assertion edits.** Point
+`revalidateForModule` at `routeTargetsForModule`, change `/notices` →
+`/bn/notices` and `/` → `/bn` in the two suites above.
+
+### Verification
+
+`tsc --noEmit` clean, `eslint .` clean, **462 tests in 27 files pass** (up from
+428 — 71 new in `seo.test.ts`, 34 in `cache.isr.test.ts`, less overlap), and
+`next build` succeeds from a clean tree and incrementally.
+
+`cache.isr.test.ts` cross-checks against `.next/prerender-manifest.json` when a
+build is present and skips when it is not, so `npm test` never requires a build.
+It asserts directly that `/about` is not a route while `/bn/about` is — the
+trap above, pinned so it cannot come back unnoticed.
+
+**One build flake, not a code defect:** killing `next dev` mid-run left a
+corrupted `.next` and the next `next build` failed with
+`Cannot find module for page: /[locale]/academics`. `rm -rf .next` fixed it and
+three subsequent builds — one clean, two incremental — all succeeded.
+
+### Deviations from Files lines, surfaced not buried
+
+| File | Card | Why |
+|---|---|---|
+| `src/lib/seo.test.ts` | T-100 | The Files line names `seo.ts` and no test. The sitemap's English rule cannot be checked by reading the file, and the seeded DB has no translated page to observe. |
+| `src/lib/cache.isr.test.ts` | T-103 | The Files line names `cache.ts` and the page exports. The Verify is a query-count assertion; this is the part of it that can live in the repo. |
+
+Both follow B-6's precedent for a Do list that needs a file the Files line does
+not name. Nothing else outside either Files list was touched: `src/app/layout.tsx`
+still hardcodes `lang="bn"` (see below), and no `done` task's code was edited.
+
+### Not done, and why
+
+**`<html lang>` is still hardcoded `bn`.** PENDING-COMMIT.md flagged it for
+T-100, but the card's Do list does not mention it and `src/app/layout.tsx` is
+not in its Files line — and the root layout sits *above* `[locale]`, so it
+cannot see the locale without being made locale-aware, which is a larger change
+than the note implies. The public subtree declares `lang`/`dir` on its own
+wrapper (T-080), which is where a screen reader reads it. T-104's a11y pass is
+the natural home.
+
+**No Twitter card tags.** `openGraph` is named in the Do list; `twitter` is not,
+and the Stop line is "SEO only". Three lines whenever a card wants them.
+
+**Notice detail alternates use the requested slug for both locales.** Slugs do
+not fall back (T-086), so a notice's Bangla and English slugs differ, and a
+correct alternates map needs both — a second read this card's Files line has no
+room for. A crawler following a missing alternate gets T-090's 404, which is the
+right answer. Documented in the page's `generateMetadata`.
+
+**The notices sitemap replicates T-086's visibility predicate.** `visibleWhere`
+is not exported from `notices/read.ts`, whose own header warns that two
+hand-written copies can drift. Copied with a comment; a task that exports it and
+deletes the copy would close the gap.

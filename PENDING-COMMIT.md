@@ -1,169 +1,176 @@
-# Pending commit — batch B-6 (complete)
+# Pending commit — batch B-10 (complete)
 
-**B-6 is done.** T-080, T-089 and T-090 are all `done`, `blocked_on` is empty,
-and `progress.done` is **52 / 78**. The next batch is **B-7** (T-081 Home, T-082
-About).
+**B-10 is done.** T-100 and T-103 are both `done`, `blocked_on` is empty, and
+`progress.done` is **62 / 78**. The next batch is **B-11** (T-101 responsive
+image delivery, T-102 font subsetting) — Sonnet, per BATCH-MODEL-PLAN.md.
 
-Only one commit is left to make, and it is the batch's bookkeeping. Everything
-else is already committed.
+**M7 is not closed.** T-101, T-102 and T-104 remain in it.
+
+Nothing in this batch has been committed. **Three commits to make**, in this
+order — the batch's two task commits and then its bookkeeping:
 
 ```sh
-git add build-state.json SESSION-LOG.md PENDING-COMMIT.md
-git commit -m "B-6: batch state and session log"
+git add src/lib/seo.ts src/lib/seo.test.ts src/app/sitemap.ts src/app/robots.ts "src/app/(public)"
+git commit -m "T-100: SEO: metadata, hreflang, sitemap, robots, JSON-LD"
+
+git add src/lib/cache.ts src/lib/cache.isr.test.ts "src/app/(public)"
+git commit -m "T-103: ISR wiring & on-demand revalidation"
+
+git add build-state.json SESSION-LOG.md PENDING-COMMIT.md BATCH-MODEL-PLAN.md
+git commit -m "B-10: batch state and session log"
 ```
 
-> The previous version of this file described B-6 stopping at its first task with
-> T-080 `blocked` on the locale route segment. **That decision was made and
-> applied.** The block is resolved; nothing in this file is a repeat of it.
+> The public page files appear in both of the first two commits on purpose:
+> T-100 added `generateMetadata` to them and T-103 added
+> `generateStaticParams`/`revalidate` to the same files. If you would rather
+> each commit hold only its own hunks, `git add -p` is the way; the two sets of
+> exports do not overlap textually.
+
+`build-state.json` was edited **surgically, not reformatted** — `git diff` on it
+shows exactly 4 changed lines (`updated_by`, `progress.done`, and the two
+`status` fields). Please keep it that way; `prettier --write` on that file
+collapses several hundred expanded array lines.
+
+Do **not** run `npm run format`. The same five pre-existing files
+(`globals.css`, `env.ts`, `fonts.ts`, `prisma.ts`, `types/db.ts`) still fail
+`format:check`. This batch's own files are clean.
 
 ---
 
-## What this session committed
+## The headline: this machine has a database now
 
-| Commit | What it is |
+Every session since B-1 recorded that no database existed here, and every M5 and
+M6 card was verified without one. **That is no longer true.** Postgres is live
+on 5432, seeded, and both cards in this batch were verified against it and
+against a real `next build` / `next start` — including a measured query count,
+not a reasoned one.
+
+B-11 onward should assume live verification is available.
+
+---
+
+## What was verified, and how
+
+| Claim | How it was checked |
 |---|---|
-| `7d29133` | `B-6: T-080 blocked on the locale route segment` — the previous session's bookkeeping, committed unchanged so the investigation survives in history |
-| `70ab248` | `ADR-005: public routes move to a required [locale] segment` — the human's decision, applied to eleven `Files` lines in BUILD-TRACKER.md and to build-state.json |
-| `9735465` | `T-080: Public layout, header, footer, language switcher` |
-| `d7051ec` | `T-089: Public: Privacy policy, terms, cookie notice` |
-| `55aef45` | `T-090: Public: 404, error, empty & maintenance states` |
+| `/` and `/en` emit **different canonicals** | live `curl`, dev and production |
+| alternates are **reciprocal and distinct** | live, plus 71 unit tests in `seo.test.ts` |
+| sitemap **excludes untranslated English** | live: 18 entries, 13 bn + 5 en, all 8 English `pages` URLs absent |
+| **static generation per locale** | `next build`: every localized route generated as `/bn/…` **and** `/en/…` at `1h` |
+| **0 DB queries on a cache hit** | `pg_stat_all_tables` scan delta over 100 requests = **0**, with a control that reads 50 |
 
-`build-state.json` was edited **surgically, not reformatted**, in both of its
-commits. `git diff` on it should show only the intended hunks. Please keep it that
-way; `prettier --write` on that file collapses several hundred expanded array
-lines and buries the real changes in a 330-line diff.
-
-Do **not** run `npm run format`. The same five pre-existing files (`globals.css`,
-`env.ts`, `fonts.ts`, `prisma.ts`, `types/db.ts`) still fail `format:check`, and
-reformatting them would put unrelated churn in this commit. This session's own
-files were formatted with a targeted `prettier --write` and are clean.
+The control matters: the same instrument registers 50 table scans across 100
+`/admin` requests with bogus session cookies, so the zeroes are real and not a
+dead counter.
 
 ---
 
-## The route shape, in one table
+## One finding that wants a task id
 
-This is the thing to know before writing any M6 page. The public site is a
-**required** `[locale]` segment, and `src/middleware.ts` maps ADR-005's URLs onto
-it. The URLs themselves are exactly what ADR-005 always said.
+**Bangla revalidation paths do not name Bangla routes.** Full reasoning and
+evidence are in SESSION-LOG.md under B-10; the short version:
 
-| public URL | internal URL | the layout sees |
-|---|---|---|
-| `/` | `/bn` | `locale = 'bn'` |
-| `/notices` | `/bn/notices` | `locale = 'bn'` |
-| `/en/notices` | `/en/notices` (no rewrite) | `locale = 'en'` |
-| `/bn/notices` | `/__invalid-locale/notices` | 404 |
-| `/xx/notices` | `/bn/xx/notices` | a Bangla page that does not exist |
-| `/login`, `/reset-password` | unchanged | outside the locale segment |
+`revalidateForModule` passes `revalidatePath` the *public URL*, and ADR-005
+makes that the wrong string for Bangla. The build manifest has `/bn/about` and
+`/en/about` and no `/about`; the prerendered page carries the tag
+`_N_T_/bn/about`. So every Bangla path target silently misses, while English
+works because its URL and route path are the same string.
 
-**Write pages at `src/app/(public)/[locale]/…` and use unprefixed paths with
-`localizePath(path, locale)` for every href.** Never hardcode `/en`. Never link
-`/bn`.
+**Nothing is broken today.** Tag invalidation carries every change on its own —
+both `/bn` and `/en` home entries list `notice:list`, so publishing a notice
+updates both, which is T-103's Verify and it passes. The path calls are
+redundant belt to those braces; the redundancy is what is misaimed.
 
-`generateStaticParams` works at this shape and is **not** wired — §A-11's
-per-locale static generation is T-103's card, and it is now possible rather than
-impossible.
+`internalRoutePath` and `routeTargetsForModule` are the fix. They are **built,
+documented and unit-tested in `src/lib/cache.ts`, and deliberately left
+unwired**, because wiring them changes two `done` tasks' assertions —
+`src/lib/mutate.test.ts` (T-038) expects `/notices`, and
+`src/lib/modules/home/actions.test.ts` (T-062) expects `/` — and neither file is
+in T-103's Files list. Both were run against the corrected mapping and both
+fail, which is the evidence that the swap is a real behaviour change.
 
----
+**The task is small:** point `revalidateForModule` at `routeTargetsForModule`,
+then change `/notices` → `/bn/notices` and `/` → `/bn` in those two suites.
 
-## Three things that want a task id
-
-None of these are in any current card's Files list, which is why they are here
-rather than done.
-
-### 1. The public 404 is served with HTTP 200
-
-`[locale]/loading.tsx` makes the route streamable, so Next commits the status
-before the body renders; by the time the catch-all's `notFound()` throws, `200 OK`
-has gone out. The page itself is correct — bilingual, full navigation, and Next
-emits `<meta name="robots" content="noindex">` — but the status line is wrong, and
-a link checker or an uptime monitor will believe it.
-
-Measured both ways: removing `loading.tsx` restores a real 404 on `/nonsense`, and
-restoring it returns the 200. Raising `notFound()` from `generateMetadata` was
-tried and changes nothing.
-
-**The fix is a route group**: move the pages to `[locale]/(site)/` with
-`loading.tsx` inside it, leaving `[...notFound]` outside the boundary. That
-rewrites the `Files` line of T-081..T-089 and moves `privacy/` and `terms/`, which
-B-6 already committed — so it is a new task, not an edit to a done one.
-
-### 2. The maintenance flag has nothing to render it
-
-`components/public/maintenance.ts` and `MaintenanceNotice.tsx` are built and
-tested (5 tests; `MAINTENANCE_MODE=on` verified to flip at runtime). **Nothing
-calls them.** A site-wide gate has to live in `[locale]/layout.tsx` (T-080's) or
-`src/middleware.ts` (T-041's), and B-6 could touch neither for this.
-
-It also reads `process.env` directly, which only `src/lib/env.ts` is supposed to
-do. `env.ts` is T-003's file; adding `MAINTENANCE_MODE` to its schema is six lines
-and one import, whenever a card owns it.
-
-### 3. `/en/login` does not exist, and the middleware sends people there
-
-Unchanged from the last two sessions. `toLogin` redirects an expired session to
-`localizePath('/login', locale)`, which is `/en/login` for an English admin, and
-there is no English login route — the page is at `src/app/(public)/login`, outside
-the locale segment. **An English admin whose session expires lands on a 404
-today.** T-033's and T-041's files, both done.
-
-This session's `isLocalizedPath` deliberately leaves `/login` and
-`/reset-password` un-rewritten rather than papering over the bug: the rewrite
-makes them work as they always have, and nothing more.
+If you would rather it had just been done, say so and it can be a fourth commit
+— it is a three-line change plus two assertions. It was left out because the
+global rules are explicit that a done task's output is superseded by a new id
+rather than edited, and because nothing is currently failing because of it.
 
 ---
 
 ## Deviations from Files lists, surfaced not buried
 
-Four files exist that no card's `Files` line named. Two were inherited from the
-previous session and are now recorded on T-080's card; two are new.
-
 | File | Card | Why |
 |---|---|---|
-| `components/public/{SafeHtml.tsx,safe-html.ts,safe-html.test.ts}` | T-080 | The Do list names a "render-side HTML sanitization layer"; the Files line gave it nowhere to live. **Now named on T-080's card**, as part of the ADR-005 commit. |
-| `src/middleware.ts` | T-080 | The approved route-shape fix. Additive — `localeRewrite` and two helpers. **Now named on T-080's card.** |
-| `[locale]/[...notFound]/page.tsx` | T-090 | Without it an unmatched URL renders the root 404, outside the public shell and with no navigation, which the card's Verify forbids. |
-| `components/public/{maintenance.ts,maintenance.test.ts,MaintenanceNotice.tsx}` | T-090 | The Do list asks for a maintenance-mode flag; the Files line names no file for it. |
+| `src/lib/seo.test.ts` | T-100 | The Files line names `seo.ts` and no test beside it. The sitemap's English rule cannot be checked by reading the file, and the seeded database holds only placeholders, so the "included once translated" half has no live case. |
+| `src/lib/cache.isr.test.ts` | T-103 | The Files line names `cache.ts` and the page-level exports. The card's Verify is a query-count assertion; this is the part of it that can live in the repo rather than in a session. |
 
-If you disagree with either of the T-090 pair, they are the two things in the tree
-to strip — the card would then ship a bare framework 404 and no maintenance flag.
+Both follow B-6's precedent. **No `done` task's code was edited**, and nothing
+else outside either Files list was touched.
 
 ---
 
-## Not verified
+## Deliberately not done
 
-**No browser, still.** The 360px Bangla-overflow half of T-080's Verify has never
-been measured — no Playwright, Puppeteer or jsdom is installed, and T-112 owns the
-first. The header, drawer and footer are built to §A-8.3 (`min-w-0` on the
-wordmark, no fixed widths, no `truncate`, `w-80 max-w-[85%]` on the drawer), and
-the two new tables scroll inside `overflow-x-auto` containers rather than pushing
-the page sideways. Reasoning says they hold; reasoning is not the measurement.
+**`<html lang>` is still hardcoded `bn` in `src/app/layout.tsx`.** The previous
+PENDING-COMMIT.md flagged it for T-100. It is not in T-100's Do list and
+`src/app/layout.tsx` is not in its Files line — and the root layout sits *above*
+the `[locale]` segment, so it cannot read the locale without becoming
+locale-aware, which is more than the note implied. The public subtree declares
+`lang`/`dir` on its own wrapper (T-080), which is where a screen reader reads
+it. **T-104's accessibility pass is the natural home**, and it is the next Opus
+batch in M7.
 
-**Twenty screens now owe a live smoke test.**
+**No Twitter card tags.** `openGraph` is named in T-100's Do list; `twitter` is
+not, and the Stop line is "SEO only".
+
+**Notice detail `hreflang` uses the requested slug for both locales.** Slugs do
+not fall back (T-086), so the two locales' slugs genuinely differ and a correct
+map needs both — a second read this card's Files line has no room for. A crawler
+that follows a missing alternate gets T-090's 404, which is the right answer.
+Documented in that page's `generateMetadata`.
+
+**The notices sitemap replicates T-086's `visibleWhere` predicate**, because it
+is not exported and `notices/read.ts` belongs to a `done` task. Its own header
+warns that two hand-written copies drift. A task that exports it and deletes the
+copy would close that.
 
 ---
 
-## Expected, not a defect
+## Placeholders are now visible in `<title>`
 
-**`/` returns 404 right now.** The rewrite sends it to `/bn`, and
-`[locale]/page.tsx` is **T-081's** file — B-6 must not pre-create it. T-081 makes
-`/` work.
+Worth knowing before anyone looks at the site: every
+`page_translations.meta_title` is still `[[CONTENT REQUIRED — DO NOT PUBLISH]]`,
+and that is exactly what the browser tab and the `og:title` show. **This is
+deliberate** and matches what `safe-html.ts` and T-081/T-082 already do — a
+marker nobody can see is a marker nobody replaces. T-113's gate is what refuses
+to launch on it, and T-130 is where the school's real copy arrives.
 
-While it is there, `src/app/page.tsx` (the T-001 scaffold, `<main />`) is
-unreachable. **T-081 should delete it**; its own comment already says the Home
-page is T-081's.
+The same placeholders are why the English sitemap currently lists only the five
+routes whose titles come from `src/i18n/*.json`. It corrects itself the moment
+real English titles are entered.
 
 ---
 
 ## Unrelated, pre-existing, and not touched
 
-The stray tracked file named `on` at the repo root, flagged since B-3, is still
-there and still in no card's Files list.
+**One build flake, not a code defect:** killing `next dev` mid-run left a
+corrupted `.next`, and the next `next build` failed with `Cannot find module for
+page: /[locale]/academics`. `rm -rf .next` fixed it; three later builds (one
+clean, two incremental) all succeeded. Worth knowing because the error looks
+like a routing bug and is not one.
 
-Also unchanged: `<html lang>` is hardcoded `bn` in the root layout (the public
-subtree declares `lang`/`dir` on its own wrapper, which is where a screen reader
-reads it; the document attribute belongs with `hreflang` in **T-100**);
-`ImagePicker` cannot be mounted in a route (T-051's defect); `jsx: preserve` means
-no `.tsx` file is testable, which is why this batch's testable logic lives in
-`maintenance.ts` and `safe-html.ts`; `MODULES.site_settings` and `MODULES.contact`
-still have `adminPath` values whose routes 404 from the sidebar; and `loadUser()`
-is still duplicated across ten M5 page files.
+Still unchanged from B-6 and B-9: the public 404 is served with HTTP 200
+(`loading.tsx` commits the status before `notFound()` throws — needs the
+`[locale]/(site)/` route-group fix); the maintenance flag has nothing that
+renders it; `/en/login` does not exist and the middleware sends English admins
+there; the stray tracked file named `on` at the repo root; `ImagePicker` cannot
+be mounted in a route; `jsx: preserve` still means no `.tsx` file is testable;
+`MODULES.site_settings` and `MODULES.contact` have `adminPath` values whose
+routes 404 from the sidebar; and `loadUser()` is duplicated across ten M5 page
+files.
+
+**Still no browser.** No Playwright or Puppeteer is installed — T-112 owns the
+first — so nothing visual in this batch was measured. Everything claimed above
+is `curl`, build output, database counters and unit tests.

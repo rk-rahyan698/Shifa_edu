@@ -1596,3 +1596,136 @@ pre-existing, already-documented defect in T-090's `[...notFound]/page.tsx`
 (its own doc comment names it: `loading.tsx` in the parent segment commits the
 response status before `notFound()` throws), not a regression from this
 batch and not this batch's file to fix.
+
+## 2026-08-18 — B-8: T-083, T-084
+
+**by:** T-084 · **next:** B-9 (T-085 Faculty, T-086 Notices, T-087 Gallery,
+T-088 Contact)
+
+Academics (four pages) and Admission. `progress.done` is 56 / 78. M6 is not
+done — T-085 through T-088 remain.
+
+### T-083 · Public: Academics + routines/calendar/exams
+
+Four pages under `src/app/(public)/[locale]/academics/`, sharing one `read.ts`
+and one `AcademicYearBanner` component — both colocated under the card's
+`academics/**` Files glob rather than in a `src/lib` or `components/public`
+location neither card names.
+
+**The "current year" contract is centralised, not restated.** `readCurrentYear`
+is the only place `is_current` is read; every other function takes the
+resolved `yearId` as a plain argument, so the four pages cannot end up scoped
+to different years the way four independent lookups could drift. A `null`
+year propagates to an empty result from the year-scoped reads (subjects,
+routines, calendar, exams) — class structure and curriculum are **not**
+year-scoped in the schema (`class_grades` and `academic_info` carry no
+`academic_year_id`), so those two still render even with no current year.
+That distinction came from reading the schema rather than assuming every
+section shares one scoping rule.
+
+**Rich text vs. plain text, checked against `validation/academics.ts` rather
+than assumed from column names.** Only `academic_info`'s three `_html` columns
+are `optionalRichText` and go through `SafeHtml`; everything else declared in
+§B-8 — class/subject names, routine and exam notes, calendar descriptions — is
+`multilineText`, which strips markup on write. Those render as plain
+interpolation with `whitespace-pre-line`, never `SafeHtml`. Getting this
+backwards either double-escapes stored markup or (the more dangerous
+direction) starts treating stripped plain text as a bypass — worth stating
+because it is not visible from `ARCHITECTURE.md`'s column names alone; the
+`_html` suffix is present on the three that need it and absent everywhere
+markup was intentionally stripped, but only `validation/academics.ts` proves it.
+
+**Exam filtering is plain links, no client JS.** `?class=<id>` follows ADR-006's
+"filter state lives in the URL" precedent from the gallery. An unrecognized or
+stale id degrades to the unfiltered schedule rather than a blank page — the
+filter option list itself is derived only from classes that actually have an
+exam this year, so a link the UI offers can never produce an empty result.
+
+**One `academics:*` tag set covers all nine §B-8 tables.** `MODULE_TAGS` has no
+finer split, and `revalidateForModule('academics')` invalidates the whole
+array on any write to any of the nine — confirmed by reading `cache.ts`'s
+`revalidateForModule`, not assumed. Every read here is tagged with the full
+array, which is the correct behaviour rather than a defensive over-approximation.
+
+Routine PDFs and the admission form (T-084) are only turned into a URL when
+`media.bucket === 'public'` (§A-10.2: "default is private; publication is an
+explicit act") — the guard against a file pointing at a signed-URL-only
+private object on a page anyone can load.
+
+### T-084 · Public: Admission
+
+One file, per the card's Files line. The status banner's open/closed state
+comes from `isAdmissionOpen` (`src/lib/modules/admission/open.ts`), imported
+and called with the raw `is_open`/`opens_on`/`closes_on` columns — never
+re-derived. `admission_faqs.answer` is the one rich-text field in the whole
+module (`richText` in `validation/admission.ts`; everything else, including
+the status banner text, step descriptions, eligibility and document notes, is
+plain/multiline) and is the only field on this page rendered through
+`SafeHtml`.
+
+**Fees are scoped to the current cycle's own `academic_year_id`**, not a
+second, independent "current year" lookup — the year a parent applying right
+now would actually be charged for is the cycle's year, and those two concepts
+could diverge even though they usually will not.
+
+**Verified exactly as the card states it:** with no cycle seeded, nothing
+admission-related renders at all — confirmed on a built server, not inferred.
+Evergreen admission steps, documents and FAQs (none of which are cycle-scoped
+in the schema) still render with no cycle present, which is correct: they are
+not an admission claim about a season, just standing information.
+
+### Verification
+
+`npx tsc --noEmit`, `npx eslint .` clean on the whole repo. `npx prettier
+--check` clean on all seven new files; the same pre-existing warnings on
+files this batch did not touch were left alone. `npx vitest run` **357
+passing**, unchanged.
+
+Both baseline and populated states were verified on a built server
+(`next build` + `next start`), against the same live dev database B-7 found.
+Baseline (the seed's own data: no admission cycle, no class subjects, no
+routines, no calendar events, no exams) confirmed the card's own Verify
+verbatim — no open-admissions claim anywhere, and Academics' class-structure
+and curriculum sections rendered from real seeded data while subjects/
+curriculum/timing/assessment correctly stayed absent. One row per table was
+then inserted — a subject pair (one optional), a routine, a calendar event, an
+exam term with one exam, an open admission cycle with a step, eligibility row,
+document, FAQ, and a fee item — and every section rendered correctly with zero
+server errors in either locale. The exam filter was verified for true mutual
+exclusion: a second exam was added under a different class, and `?class=`
+for each class showed only that class's row while the unfiltered view showed
+both. All test rows were deleted afterward and row counts confirmed back to
+baseline (6 seeded features being the only nonzero count either batch touches).
+
+**A build-tooling detour, not a code defect.** Mid-verification, repeated
+`Stop-Process -Force` calls against the dev `next start` process — issued to
+force a fresh in-memory cache between the empty and populated states — twice
+left `.next/BUILD_ID` missing while the rest of the build output was intact,
+producing an empty 200 response with no `Content-Type` header from every
+route, this batch's pages included. `rm -rf .next && npm run build` run to
+completion without interruption resolved it both times. Recorded here because
+the symptom (a 200 with an empty body) looks exactly like a silently-failing
+Server Component and cost real time to rule out as one.
+
+### Not verified
+
+**Still no browser.** Bangla string-length overflow at 360px was not measured
+for any of the five pages — the exam schedule's table and the fee grid are the
+two most likely to show it, both wide tables wrapped in `overflow-x-auto`
+rather than verified to actually need it at this viewport.
+
+**The routine/admission-form `download` attribute** was not confirmed to
+force a browser download rather than navigate — `publicUrl` points at the
+storage endpoint's own origin (`STORAGE_PUBLIC_BASE_URL`), and `download` is
+unreliable cross-origin depending on the browser. The link works either way
+(the file loads); only the "downloads instead of navigating" nicety is
+unconfirmed, and the same question will recur for T-086's notice attachments.
+
+### Unchanged from earlier batches
+
+`/en/login` still 404s for an English admin whose session expires. `<html
+lang>` is still hardcoded `bn` in the root layout, flagged for T-100. The
+stray tracked file named `on` at the repo root is still there. `/notices`,
+`/en/notices` and every other still-unbuilt M6 route return 200 for the
+bilingual 404 rather than a real 404 status — T-090's pre-existing, documented
+defect, unrelated to this batch.

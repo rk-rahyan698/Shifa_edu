@@ -44,12 +44,12 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | Batch | Tasks | Description | Model | Complexity | Risk | Reason | Status |
 |---|---|---|---|---|---|---|---|
 | **B-1** | T-050 ✅, T-051 ✅, T-052 ✅ | Admin shell, shared UI kit, dashboard | **Opus** *(ran on Opus)* | High | High | The UI kit is inherited by all 12 M5 modules. `DataTable`'s server-side pagination contract and `DualLocaleField`'s BN-required/EN-optional semantics are decided once here and copied twelve times. | **Completed** — M4 closed |
-| **B-2** | T-060, T-061, T-062 | Site settings + branding, home, about | **Opus** | High | Medium-High | First M5 module — sets the read-model → UI → Server Action → permission → audit → revalidate pattern the rest imitate. Branding needs two separate actions with two different gates (`super_admin OR edit_branding` vs `site_settings:edit`). | Pending |
-| **B-3** | T-063, T-064 | Academics; admission & fees | **Opus** | Very High | High | The two heaviest cards. `RESTRICT` refusals must name the blocking records rather than cascade, routine upload must demote the previous `is_current`, and T-064 must publish the single admission-open expression that T-084 later consumes. | Pending |
-| **B-4** | T-065, T-066, T-067 | Faculty, notices, gallery | **Sonnet** | Medium-High | High | Pattern is established by B-2/B-3; this is CRUD plus boolean gates. Risk stays High because the gates are consent and publish rights — verify each one explicitly rather than trusting the pattern. | Pending |
-| **B-5** | T-068, T-069, T-070, T-071 | Inbox, admin/permission matrix, profile, media | **Opus** | High | High | T-069 governs authorization itself: the matrix renders from `module_actions` rather than hardcoding, suspension must invalidate live sessions immediately, and it unlocks T-110's ~40-case suite. The other three are simple and ride along. | Pending |
-| **B-6** | T-080, T-089, T-090 | Public shell, legal pages, error states | **Opus** | High | Medium | Locale routing is asymmetric by ADR-005 (`/` = bn, `/en` = en), the switcher must rewrite the path and never set a cookie, and a render-side sanitization layer is introduced. Foundation for all 10 public pages. | Pending |
-| **B-7** | T-081, T-082 | Public home, about | **Sonnet** | Medium | Low-Medium | Renders content the admin side already models. The one rule that matters — an empty or placeholder-marked section must not render at all — is explicit in both contracts. | Pending |
+| **B-2** | T-060 ✅, T-061 ✅, T-062 ✅ | Site settings + branding, home, about | **Opus** | High | Medium-High | First M5 module — sets the read-model → UI → Server Action → permission → audit → revalidate pattern the rest imitate. Branding needs two separate actions with two different gates (`super_admin OR edit_branding` vs `site_settings:edit`). | **Completed** |
+| **B-3** | T-063 ✅, T-064 ✅ | Academics; admission & fees | **Opus** | Very High | High | The two heaviest cards. `RESTRICT` refusals must name the blocking records rather than cascade, routine upload must demote the previous `is_current`, and T-064 must publish the single admission-open expression that T-084 later consumes. | **Completed** |
+| **B-4** | T-065 ✅, T-066 ✅, T-067 ✅ | Faculty, notices, gallery | **Sonnet** | Medium-High | High | Pattern is established by B-2/B-3; this is CRUD plus boolean gates. Risk stays High because the gates are consent and publish rights — verify each one explicitly rather than trusting the pattern. | **Completed** |
+| **B-5** | T-068 ✅, T-069 ✅, T-070 ✅, T-071 ✅ | Inbox, admin/permission matrix, profile, media | **Opus** | High | High | T-069 governs authorization itself: the matrix renders from `module_actions` rather than hardcoding, suspension must invalidate live sessions immediately, and it unlocks T-110's ~40-case suite. The other three are simple and ride along. | **Completed** — M5 closed |
+| **B-6** | T-080 ✅, T-089 ✅, T-090 ✅ | Public shell, legal pages, error states | **Opus** | High | Medium | Locale routing is asymmetric by ADR-005 (`/` = bn, `/en` = en), the switcher must rewrite the path and never set a cookie, and a render-side sanitization layer is introduced. Foundation for all 10 public pages. | **Completed** |
+| **B-7** | T-081 ✅, T-082 ✅ | Public home, about | **Sonnet** | Medium | Low-Medium | Renders content the admin side already models. The one rule that matters — an empty or placeholder-marked section must not render at all — is explicit in both contracts. | **Completed** |
 | **B-8** | T-083, T-084 | Public academics, admission | **Sonnet** | Medium | Low-Medium | Consumes contracts B-3 already defined, including the admission-open expression. Must scope to the current academic year and show it. | Pending |
 | **B-9** | T-085, T-086, T-087, T-088 | Faculty, notices, gallery, contact | **Sonnet** | Medium | Medium | Four repetitions of one list-and-detail shape. T-088's inquiry form adds validation and rate limiting, both already built in T-033/T-020. | Pending |
 | **B-10** | T-100, T-103 | SEO metadata, hreflang, sitemap, JSON-LD; ISR | **Opus** | High | Medium | hreflang over an asymmetric locale scheme is easy to get quietly wrong, and it is wrong in search results rather than in a test. Spans every page plus the revalidation that keeps them fresh. | Pending |
@@ -95,8 +95,9 @@ exists, the contract is explicit, and verification is objective.
 - **Completed** — all tasks verified, `build-state.json` updated, awaiting or
   having received the human's single batch commit
 
-**B-1 is complete and M4 is closed.** All three tasks are `done` and verified.
-The next batch is **B-2** (T-060, T-061, T-062) — the first M5 module batch.
+**B-1 through B-7 are complete.** M4 and M5 are closed; B-6 closed the public
+shell plus legal/error states, and B-7 closed Home and About. The next batch is
+**B-8** (T-083 Academics, T-084 Admission) — the public faces of B-3.
 
 ### Two findings from B-1 that change how later batches should be run
 

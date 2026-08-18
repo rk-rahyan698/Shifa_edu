@@ -1457,3 +1457,142 @@ root layout, flagged for T-100. The stray tracked file named `on` at the repo ro
 is still there. `ImagePicker` still cannot be mounted in a route, `jsx: preserve`
 still means no `.tsx` file is testable, and `loadUser()` is still duplicated
 across ten M5 page files.
+
+## 2026-08-18 — B-7: T-081, T-082
+
+**by:** T-082 · **next:** B-8 (T-083 Academics, T-084 Admission)
+
+Home and About, the first two content pages to sit inside T-080's shell.
+`progress.done` is 54 / 78. M6 is not done — T-083 through T-088 remain.
+
+### T-081 · Public: Home
+
+`HeroSlider`, `StatsBar` and `FeatureGrid` under `src/components/public/`, each
+deciding its own emptiness and returning `null` rather than an empty wrapper —
+the same contract `Footer` and `SafeHtml` already carry. §B-17's "5 parallel
+tagged reads" is taken literally: `home_content` and `features` share one
+`cachedRead` (`readIntroAndFeatures`) since both sit under the `home` module and
+both invalidate on the same `home:content` tag, which keeps the read count at
+five (hero, intro+features, stats, notices, gallery) without losing §A-6's
+per-module tag boundary. Latest Notices and the Gallery Preview have no
+dedicated component in the card's Files list, so both render inline in
+`page.tsx` with the same conditional guard.
+
+`HeroSlider` auto-rotates on the spec's 5s interval, pauses on hover or focus,
+and never starts at all under `prefers-reduced-motion` — a single slide renders
+statically with no controls, and zero slides render nothing. The overlay is a
+Forest Green gradient (`from-primary to-transparent`), not a black scrim, per
+design-system.md §6's "duotone, never a full-image filter" — `bg-primary/NN`
+slash-opacity was avoided throughout since custom color tokens resolve to hex
+strings, not channel triplets, and don't support it (tailwind.config.ts's own
+note).
+
+`features.icon` carries a Lucide identifier the seed already writes
+(`GraduationCap`, `Monitor`, …) for an icon library that is not yet a
+dependency — adding one is a `package.json` change outside this card's Files, so
+`FeatureGrid` runs on the admin's own image, title and description and never
+prints the raw identifier as display text. Wiring the icon set is left for
+whichever later card adds the dependency.
+
+A media row is only ever turned into a URL when `media.bucket === 'public'`
+(§A-10.2: "default is private; publication is an explicit act") — the one
+guard against a hero slide, feature or gallery photo pointing at a
+signed-URL-only private object on a page anyone can load.
+
+### T-082 · Public: About
+
+One file, as the card's Files line requires — the read models live beside the
+page, the same reading `PublicLayout`'s `readShell` already established. Five
+`cachedRead`s: `about_content` + committee + achievements share one (all three
+sit under the `about` module and its `about:content` tag), registration ids
+carry `site_settings`'s tag (§A-5.2 places `school_registration_ids` there,
+not under `about`), and curriculum reads through `academics`'s full tag set
+rather than hand-picking `academics:info` out of step with the registry.
+
+**Deviation from PRODUCT-SPEC.md, resolved by ARCHITECTURE.md's authority.**
+§P-6.3 says the principal's message "does not render without the principal's
+publish consent," but `about_content` (§B-10) carries no consent column at
+all — unlike `committee_members`, `gallery_photos` and `faculty`, which each
+have one and are filtered on it below. Where the two disagree, ARCHITECTURE.md
+wins (global rule), so the principal's photo and message render whenever the
+school has entered them, the same as any other `about_content` field. Recorded
+here rather than silently picked, since it is the one place this card reads
+against the weaker of its two Load sources.
+
+Every rich-text section (history, vision, mission, principal's message,
+curriculum) is gated on `renderableHtml(...)  !== null` *before* the heading
+wrapper renders, not after — the difference between an empty `<h2>` over blank
+space and the section not existing at all. A section holding the literal
+`[[CONTENT REQUIRED — DO NOT PUBLISH]]` marker is not "empty" under that check
+and renders normally, per `safe-html.ts`'s own note that placeholder text must
+stay visible for review; T-113's gate is what refuses to launch on it, not this
+page.
+
+### Also touched: the T-001 scaffold
+
+`src/app/page.tsx` — the blank `<main />` T-001 left at the true root — is
+deleted. The previous session's log already named it: "should be deleted by
+T-081." It was provably dead before this commit: `src/middleware.ts` rewrites
+every `/` request to `/bn` ahead of Next's router, so the literal top-level `/`
+route could never be reached once `[locale]/page.tsx` existed. `next build`
+before and after confirms no route regression — `/` was never a listed static
+route to begin with once the rewrite is in place, only `ƒ /[locale]` serves it.
+
+### Verification
+
+`npx tsc --noEmit`, `npx eslint .` clean on the whole repo. `npx prettier
+--check` clean on all five new/changed files — the pre-existing warnings on
+files this batch did not touch (`admin/faculty/**`, `admin/gallery/**`,
+`admin/notices/**`, `globals.css`, `env.ts`, `fonts.ts`, `prisma.ts`,
+`types/db.ts`) were left alone, same call every earlier session has made.
+`npx vitest run` **357 passing**, unchanged — neither card added a pure-logic
+module, so there was nothing new to unit-test under `jsx: preserve`'s ceiling
+(BATCH-MODEL-PLAN.md's finding 1, still open).
+
+**A live database exists now** (contradicting BATCH-MODEL-PLAN.md's "no
+database on this machine" finding, apparently resolved between sessions) —
+`npx prisma migrate status` reports up to date, and `npx prisma db seed` ran
+clean. Both pages were verified on a built server (`next build` + `next
+start`) against it, twice: once against the seed's baseline (0 hero slides, 0
+stats, 0 notices, 0 gallery photos, 6 features, one stray `home_content`
+intro row already present before this session from earlier module testing)
+and once with one throwaway row inserted per table — a hero slide, a
+verified stat, a published notice, a consented gallery photo, full
+`about_content` translations plus a principal photo, a consented committee
+member, an achievement and a public registration id. The baseline pass is the
+one the card's Verify names outright: with no verified stats seeded, the
+stats bar is absent — confirmed by its literal absence from the response body,
+not inferred. The populated pass exercises every render path the empty one
+cannot: Bangla digit formatting on the stats value (`১,২০০+` via
+`Intl.NumberFormat('bn-BD')`), the single-slide no-controls path, `SafeHtml`
+rendering four distinct rich-text fields, and the fallback `lang` attribute
+machinery, all with zero server-side errors in either locale. `/`, `/en`,
+`/about`, `/en/about` all 200; `/bn` still 404s. All test rows were deleted
+afterward and row counts confirmed back to the seed baseline before the
+server was stopped.
+
+### Not verified
+
+**Still no browser.** Bangla string-length overflow at 360px was not measured
+for either page — the hero's title/subtitle stack and the About page's
+registration-info table are the two places most likely to show it, and T-112
+still owns the first Playwright install.
+
+**Keyboard and screen-reader behaviour of `HeroSlider`** was read from the
+markup, not driven by an assistive-technology session: `aria-roledescription`,
+the dot buttons' `aria-current`, and the left/right arrow-key handler are all
+present in the DOM but none were exercised by an actual keyboard or screen
+reader.
+
+### Unchanged from earlier batches
+
+`/en/login` still 404s for an English admin whose session expires. `<html
+lang>` is still hardcoded `bn` in the root layout, flagged for T-100. The
+stray tracked file named `on` at the repo root is still there — not this
+batch's file to remove either. `ImagePicker` still cannot be mounted in a
+route, and `/notices`, `/en/notices` and every other unbuilt M6 route still
+return **200** for the bilingual 404 rather than a real 404 status — a
+pre-existing, already-documented defect in T-090's `[...notFound]/page.tsx`
+(its own doc comment names it: `loading.tsx` in the parent segment commits the
+response status before `notFound()` throws), not a regression from this
+batch and not this batch's file to fix.

@@ -2804,3 +2804,201 @@ creates to prove the REVOKE really do vanish on rollback.
 
 Nothing deferred to a new task id. M8's phase gate (`build-state.json`) still
 holds M9 and M10 shut until T-112 through T-114 land alongside this.
+
+## 2026-08-19 — B-15: T-112 (blocked)
+
+**by:** T-112 · **next:** human decision on the `readNoticeList` frozen-clock
+finding below, then B-15 again
+
+**The suite is built and it is red, and the red is real.** Every step of the
+card's golden path passes on both viewports except the last one, which fails
+because a notice published from the admin panel does not appear on the public
+notices list. That is not a test defect; it is reproducible outside Playwright
+and is diagnosed below. **T-112 is `blocked` and `blocked_on` is no longer
+empty**, so no further task may be selected until a human resolves it.
+`progress.done` is unchanged at 68 / 79, and M8's phase gate still holds M9 and
+M10 shut.
+
+### What was built
+
+`tests/e2e/**` and `playwright.config.ts` — one journey, run twice.
+
+| File | What it holds |
+|---|---|
+| `playwright.config.ts` | two projects (desktop 1280×800, `mobile-360` at 360×740 with touch), a `next build && next start` web server, artifacts under `.next/e2e-artifacts` |
+| `golden-path.spec.ts` | the card's journey as one test of ten `test.step()`s |
+| `support/db.ts` | the suite's own Prisma client, the planted fixture notice, the marker-based cleanup sweep |
+| `support/global-setup.ts` | clean, drop the data cache, publish the notice the journey opens by reading |
+| `support/global-teardown.ts` | the same sweep, on pass or fail |
+| `support/fixtures.ts` | per-test synthetic client IP, the seeded fixture, collision-safe names |
+| `pages/public-site.ts` | the public site: read, switch language, submit an inquiry |
+| `pages/admin-panel.ts` | sign in, inbox, write a notice, publish it |
+
+The journey, in order: a visitor opens `/notices` in Bangla and reads a notice →
+switches to English and lands on the *same* notice at `/en/notices/<slug>` →
+submits the contact form → an admin signs in → sees that message in the inbox →
+writes a notice and saves it → the draft is confirmed absent from both public
+locales → the admin publishes it → it appears publicly in Bangla → and in
+English. Steps 1–8 are green on both projects. Steps 9 and 10 are the failure.
+
+### The finding: `readNoticeList` freezes "now" at module load
+
+`src/app/(public)/[locale]/notices/read.ts:35-39`:
+
+```ts
+const visibleWhere = {
+  deletedAt: null,
+  statusCode: "published",
+  publishedAt: { lte: new Date() },
+} satisfies Prisma.NoticeWhereInput;
+```
+
+`new Date()` is a module-level expression. It is evaluated **once**, when the
+server process first loads the module, and every subsequent list read compares
+`published_at` against that one frozen instant. On a long-running server the
+consequences are:
+
+1. **A notice published now never reaches the list.** The row is correct, the
+   Server Action is correct, `revalidateTag('notice:list')` fires and does its
+   job — the list is simply re-read through a filter whose upper bound is older
+   than the notice.
+2. **Scheduled publication is inert.** T-066's `notice-publish-at` control
+   offers "publish at the scheduled time"; nothing makes that time arrive.
+3. **The two visibility checks have already drifted.** `readNoticeDetail` does
+   not use `visibleWhere` at all — it re-checks inline at line 171 against a
+   live `Date.now()` — so the notice's own URL renders correctly in *both*
+   locales while the list that should link to it is empty. The file's own header
+   states the opposite ("Both `readNoticeList` and `readNoticeDetail` build that
+   condition once, in `visibleWhere` below, so a future edit to one can never
+   drift from the other"). The drift is what makes the failure partial, and
+   partial is what makes it survivable for four milestones.
+4. **Nothing bounds the staleness.** `readNoticeList` declares no `revalidate`.
+
+**Measured, not inferred.** Fresh production build, `.next/cache/fetch-cache`
+deleted, a published notice inserted with `published_at = now()` *after* the
+server started, then requested through a category-filtered URL that had never
+been cached so the read could not answer from `cachedRead`'s store:
+
+| Run | Only difference | `/notices?category=…` |
+|---|---|---|
+| A | server started **before** the notice's `published_at` | "এখন কোনো নোটিশ নেই" (empty) |
+| B | server restarted **after** it | the notice |
+
+Same URL, same row, same cold cache. The detail page rendered the notice with
+its correct `<h1>` and `<title>` in both locales throughout.
+
+**The project already knows this hazard.** T-100 hit it in `src/app/sitemap.ts`,
+kept its `new Date()` *inside* the cached function so it is re-evaluated per
+cache miss, and added `export const revalidate = 3600` with a comment naming the
+exact failure mode ("a notice scheduled for tomorrow enters the sitemap only
+when something rebuilds it… this covers the passage of time, which nobody
+triggers"). `read.ts` has neither mitigation.
+
+**Why it was not fixed here.** `read.ts` is T-086's output and T-086 is `done`;
+the global rules forbid revising a done task's work, and T-112's Files line is
+`tests/e2e/**` and `playwright.config.ts`. The one-line change belongs to a new
+task id. Recommendation in PENDING-COMMIT.md.
+
+### A second, pre-existing defect the suite ran into
+
+Every public `notFound()` is served with **HTTP 200**, not 404 — confirmed
+across `/notices/<unknown>`, `/en/notices/<unknown>`, `/faculty/nope` and
+`/does-not-exist-top-level`. The page is right (the bilingual 404, full
+navigation); only the status line is wrong. This is already diagnosed and
+written up in `[locale]/[...notFound]/page.tsx`'s own header by T-090:
+`loading.tsx` makes the segment streamable, so Next commits `200 OK` before the
+page body runs and `notFound()` can no longer change it. `/bn/notices` still
+answers a true 404, because that one is refused by the layout guard before the
+shell streams.
+
+The draft-invisibility step therefore asserts what the page *renders* — the
+notice's heading absent, the bilingual 404 present in both its `lang="bn"` and
+`lang="en"` halves — and not the status code. Asserting `404` would fail on a
+defect this card did not introduce and cannot fix; asserting `200` would write
+the defect down as though it were the contract.
+
+### Design decisions worth knowing before touching this suite
+
+**One slug per notice, shared by both locales.** The language switcher is
+`localizePath(pathname, target)` — it swaps the prefix and keeps the rest of the
+path verbatim — so `/notices/<slug>` becomes `/en/notices/<slug>` with the *same*
+slug, and the English page resolves only if the English translation carries it.
+`notice_translations` is `UNIQUE (locale_code, slug)`, not `UNIQUE (slug)`, so
+this is what the schema permits and what the switcher requires. Two different
+slugs would 404 step 2 of the golden path.
+
+**A fresh RFC 6598 client address per test, via `x-forwarded-for`.** §A-12 gives
+the contact form 3 submissions per hour per IP and ADR-014 makes that counter
+durable, so a suite that always looks like the same visitor locks itself out on
+its fourth run of the hour. The limiter is not bypassed; it is told the truth,
+which is that the two projects are two different visitors. `cleanup()` deletes
+the buckets afterwards.
+
+**The desktop and mobile language switchers are told apart by `tabindex`.**
+Both copies are in the DOM at every width — `MobileNav` keeps its panel mounted
+so the slide can animate — and Playwright finds both. The drawer's copy carries
+`tabindex` on purpose, to keep off-screen links out of the tab order; the bar's
+copy has no `tabIndex` prop at all. The attribute that distinguishes them for a
+keyboard user is the one that distinguishes them here.
+
+**The fixture notice is dated a day ago, not `now()`.** Partly realism, partly
+insulation from the finding above: whether a notice published *at this instant*
+is visible depends on whether the server happened to start before or after it,
+and the opening step of the journey should not be about that.
+
+**`global-setup.ts` drops `.next/cache/fetch-cache`.** A notice inserted straight
+into Postgres fires no tag, and `readNoticeList` has no `revalidate`, so on a
+machine that has run the suite before the list would answer from an old cache.
+Dropping it puts the server in the state a fresh deployment is in. It weakens
+nothing: by the time the journey reaches "it appears publicly", the list has been
+requested and re-cached twice, so that assertion still depends entirely on the
+publish action's revalidation.
+
+**Fixture callbacks name their second parameter `provide`, not `use`.** This
+repo's ESLint extends `next/core-web-vitals`, whose `react-hooks/rules-of-hooks`
+reads a bare `use(...)` as React 19's `use` hook and fails all four fixtures.
+The name means nothing to Playwright, and renaming beats switching the rule off
+for a directory that will grow.
+
+### The dependency this card needed and did not have
+
+Playwright was not installed. The card names Playwright in its Do list and lists
+only `tests/e2e/**` and `playwright.config.ts` in its Files, so building it at
+all required `@playwright/test` (1.62.1) plus its Chromium download —
+`package.json` and `package-lock.json`, both outside the Files line.
+BATCH-MODEL-PLAN.md anticipated this ("T-112 in particular was scoped expecting
+to be the batch that installs the first one") but that file is advisory. The
+change is additive — one devDependency and its lockfile entries — and is
+proposed as its **own commit** in PENDING-COMMIT.md so it is approved on its own
+terms rather than riding along inside the test commit.
+
+### Verification
+
+`tsc --noEmit` and `eslint tests/e2e playwright.config.ts` clean. `npm test`
+green — **761 tests in 41 files**, including the two `src/lib/cache.isr.test.ts`
+build-output assertions that B-13 and B-14 both reported as failing; they need a
+fresh `next build` artifact and this session produced one. `vitest.config.ts`
+already excluded `tests/e2e/**` (T-005 wrote that exclusion in advance), so the
+Playwright specs are not collected twice.
+
+The Playwright run itself: **8 of 10 steps green on both projects**; steps 9 and
+10 red on both, for the single cause above.
+
+The database was left as found. A direct post-run query confirmed `notices` back
+to 0, `contact_messages` to 0, and zero `rate_limit_counters` rows in the suite's
+synthetic address block. The `activity_logs` rows written by the admin's save and
+publish were deliberately **not** removed — §B-16 makes that table append-only,
+and a suite that deleted from it would break one contract while asserting
+another. The sessions from the journey's sign-ins were left to expire on T-032's
+own schedule.
+
+One environmental note for the next session: a stale `next start` from an earlier
+session was holding port 3000 and sharing `.next/` with the production build,
+which corrupted it (`Cannot find module './vendor-chunks/zod.js'`). It was
+stopped. Dev and production builds cannot share `.next/` while both are running.
+
+### Not done
+
+The last two steps of the card's own golden path, for the reason above. Nothing
+was trimmed from the Do list, and no Verify was skipped or softened in order to
+reach a green result.

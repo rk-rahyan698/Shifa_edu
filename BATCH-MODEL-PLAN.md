@@ -57,8 +57,8 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | **B-12** | T-104 ✅ | Accessibility remediation, both locales | **Opus** | High | Medium | A whole-site audit with the loosest scope of any card — judging what to fix, across two scripts and two locales, is the work. | **Completed** |
 | **B-12a** | T-105 ✅ | Fix admin dashboard 500 (`created_at` → `submitted_at`) | **Sonnet** | Low | Low | Added by B-12, which found `/admin` had answered 500 for every admin since T-052 and proved the one-word fix sufficient. Its own id because a `done` task's output is superseded rather than edited. | **Completed** |
 | **B-13** | T-110 ✅ | Authorization matrix test suite | **Opus** | High | High | ~40 cases that decide whether the permission model actually holds. A plausible-looking suite that misses a hole is worse than no suite, because it reads as proof. | **Completed** — 236 cases |
-| **B-14** | T-111 | Repository & constraint integration tests | **Sonnet** | Medium | Low | Mechanical derivation from a schema that already exists and 15 committed migrations. | **Completed** |
-| **B-15** | T-112 | E2E golden paths, both locales, mobile | **Sonnet** | Medium | Low-Medium | Fiddly but well-defined — the paths are named in the card. | Pending |
+| **B-14** | T-111 ✅ | Repository & constraint integration tests | **Sonnet** | Medium | Low | Mechanical derivation from a schema that already exists and 15 committed migrations. | **Completed** |
+| **B-15** | T-112 | E2E golden paths, both locales, mobile | **Sonnet** | Medium | Low-Medium | Fiddly but well-defined — the paths are named in the card. | **Blocked** — suite built, red on the card's last step; see PENDING-COMMIT.md |
 | **B-16** | T-113 | Content & ethics gates | **Opus** | High | High | The last thing standing between `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, unconsented faces, and unverified statistics reaching a live school site. Leakage detection is the subtle part. | Pending |
 | **B-17** | T-114 | CI performance, bundle & a11y budgets | **Sonnet** | Medium | Low | Threshold and pipeline configuration against budgets already set in the architecture. | Pending |
 | **B-18** | T-120, T-121 | Nightly encrypted backup; retention purge | **Opus** | High | High | One job encrypts, the other **permanently deletes** — messages at 12 months, audit at 24. An off-by-one in a retention window destroys records nobody knows are gone. | Pending |
@@ -93,6 +93,9 @@ exists, the contract is explicit, and verification is objective.
 
 - **Pending** — not started
 - **In Progress** — currently executing in a session
+- **Blocked** — attempted and stopped. The task's id is in `build-state.json`'s
+  `blocked_on` and carries a `blocked_reason`; nothing may be selected until a
+  human resolves it
 - **Completed** — all tasks verified, `build-state.json` updated, awaiting or
   having received the human's single batch commit
 
@@ -128,9 +131,32 @@ running test files held open in their own (later-rolled-back) transactions,
 fixed by filtering every count to the exact codes `prisma/seed.ts` itself
 inserts. Full account in SESSION-LOG.md.
 
-The next batch is **B-15** (T-112, E2E golden paths, both locales, mobile),
-Sonnet, solo. M8's phase gate still holds M9 and M10 shut until T-112 through
-T-114 are done.
+**B-15 has since been attempted and is blocked.** The suite was built — two
+Playwright projects, desktop and 360px, running the card's golden path as one
+ten-step journey — and eight of its ten steps pass on both viewports. The last
+two fail, and the cause is not the suite: `readNoticeList` builds its "published
+and not in the future" filter from a module-level `new Date()`, evaluated once
+when the server process loads the file, so **a notice published from the admin
+panel never appears on `/notices` or `/en/notices`** on a long-running server.
+The detail page is unaffected — it re-checks with a live `Date.now()` — which is
+why a broken notices list survived four milestones: the notice exists and is
+reachable by URL, it is merely unfindable. Proved by controlled experiment (same
+URL, same row, cold cache, opposite answers either side of a server restart) and
+written up in full in PENDING-COMMIT.md and SESSION-LOG.md. The fix is one line
+in T-086's `read.ts` — a `done` task — so it wants a new task id and a human's
+decision. `blocked_on` is `["T-112"]`; nothing else may be selected until it is
+resolved. M8's phase gate still holds M9 and M10 shut.
+
+**The B-15 call is worth revisiting.** The row above rated it Low-Medium risk
+and "well-defined", and as a *construction* estimate that was right — the paths
+are named in the card and the suite went together without surprises. What the
+rating missed is that an E2E golden path is the first thing in this project that
+exercises a **long-running server**, and that is a different machine from the one
+every unit, DB and authorization test runs against. Two of the three defects
+found this session are process-lifetime bugs (a frozen clock, a streamed 404
+status) that no amount of care in the other tiers could have surfaced. Risk in
+the verification tier is not the risk of writing the test badly; it is the size
+of what the test is the first to look at.
 
 The B-13 call was right, and for a reason the row half-anticipated. "A
 plausible-looking suite that misses a hole is worse than no suite" is exactly

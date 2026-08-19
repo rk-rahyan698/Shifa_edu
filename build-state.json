@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-19",
-  "updated_by": "T-111",
+  "updated_by": "T-112",
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -75,7 +75,9 @@
       ]
     }
   },
-  "blocked_on": [],
+  "blocked_on": [
+    "T-112"
+  ],
   "open_decisions_required_before": {
     "ADR-005_route_shape": {
       "affects": [
@@ -1023,7 +1025,8 @@
         "T-088",
         "T-066"
       ],
-      "status": "todo"
+      "status": "blocked",
+      "blocked_reason": "The suite is built and every step of the card's golden path passes on BOTH viewports except the last one. `readNoticeList` (src/app/(public)/[locale]/notices/read.ts:35-39) builds its visibility filter from a module-level constant whose `new Date()` is evaluated once, when the server process first loads the module; every later read therefore compares `published_at` against the process start time, so a notice published NOW from the admin panel never appears on /notices or /en/notices. `readNoticeDetail` is unaffected — it re-checks against a live `Date.now()` at line 171 — so the notice's own URL works in both locales while the list that should link to it stays empty. Proved by controlled experiment: same URL, same row, data cache cleared both times, visible only when the server was restarted after the publish. That code is T-086's, which is `done`, and this card's Files line is `tests/e2e/**` + `playwright.config.ts`, so the fix cannot be made from inside T-112. Needs a new task id — see PENDING-COMMIT.md."
     },
     {
       "id": "T-113",

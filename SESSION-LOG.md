@@ -2552,3 +2552,152 @@ Nothing deferred. This was a one-line card with a note instead of a
 BUILD-TRACKER.md entry — `build-state.json`'s `note` field on T-105 was the
 spec, per B-10's precedent for a finding that gets its own id rather than a
 formal card.
+
+---
+
+## 2026-08-19 — B-13: T-110
+
+**by:** T-110 · **next:** B-14 (T-111 repository & constraint integration tests)
+
+The authorization matrix suite — the first card in M8, the verification tier.
+`progress.done` is 67 / 79. M8 needs T-111 through T-114 before its phase gate
+opens M9 and M10.
+
+### What was built
+
+`tests/authorization/` — a harness and four specs, **236 cases**, all green:
+
+| File | Cases | What it holds |
+|---|---|---|
+| `matrix.test.ts` | 22 | §A-13.2's ten rows, one `describe` each, in order |
+| `every-endpoint.test.ts` | 192 | the two universal rows × **every** exported Server Action |
+| `pipeline.test.ts` | 14 | every action routes through `mutate()`; the suite's own Contract |
+| `isolation.test.ts` | 8 | the static import test; `faculty_private` unreachable publicly |
+
+The whole repo is now **698 tests in 31 files**, up from 462.
+
+### The design decision that made ~40 cases into 192
+
+§A-13.2 opens "For **every** mutating endpoint" and then lists ten rows. Written
+literally that is ten cases against one endpoint, or ninety-odd fixtures to do
+it properly. The way through is `mutate()`'s stage order: **authenticate →
+authorize → validate**. A caller with no session is refused before its payload
+is parsed, so one empty object exercises the authorization boundary of an
+endpoint whose schema the test does not need to know.
+
+That turns "every mutating endpoint" from a hand-maintained list into a sweep:
+`allExportedActions()` imports all eleven module files and collects everything
+matching `…Action`, and both universal rows run against all 93. **A new endpoint
+is covered the moment it is exported** — nobody has to remember to add it.
+
+The shortcut rests on the stage order being real, so `pipeline.test.ts` asserts
+that ordering from `PIPELINE_STAGES` rather than assuming it, and
+`matrix.test.ts` pins it behaviourally (garbage input to an anonymous caller
+returns 401, not 422).
+
+### Mutation testing found what green tests could not
+
+The card's Verify is "deliberately removing one permission check makes the suite
+fail". Run as an experiment rather than a claim, against eight sabotages:
+
+| Sabotage | Suite result |
+|---|---|
+| `can()` module permission check → `return true` | **86 failed** |
+| `can()` suspension check removed | **2 failed** |
+| `hasSpecialGrant()` → `return true` | **1 failed** |
+| …plus the in-transaction grant check | **2 failed** |
+| users `requireSuperAdmin` removed | **1 failed** |
+| …plus `can()` applicability **and** the in-transaction check | **105 failed** |
+| `mutate()`'s whole `authorize` stage removed | **88 failed** |
+| in-transaction re-authorization removed | **1 failed** |
+
+Two of those rows only became red after a second pass. **The first attempt at
+sabotages 3 and 4 left the suite entirely green**, and the reason turned out to
+be a property worth recording rather than a hole: `assertStillAuthorized`
+re-reads `user_module_permissions` and `user_special_grants` **inside the write
+transaction**, so blanking `hasSpecialGrant` does not unlock branding — the
+second layer denies. The `users` module is guarded three times over (its own
+`requireSuperAdmin`, `can()` refusing an action the module never declares, and
+the in-transaction row check), so removing any one changes no outcome at all.
+
+That redundancy is invisible to behavioural testing by construction: a layer you
+can delete without changing any observable result is a layer no black-box
+assertion can see. So it is pinned structurally — a `defence in depth` block
+asserts each layer exists, including that **both** implementations check
+suspension before the super-admin bypass, the one ordering two copies could
+silently disagree about. And `hasSpecialGrant` gained a direct unit assertion,
+which is what turned sabotage 3 from green to red. After that pass, all eight
+sabotages are caught.
+
+### Deliberate choices
+
+**A real database, not a mocked Prisma.** Every claim in §A-13.2 is a claim
+about a decision whose inputs are rows. A mocked client would let all forty
+cases pass with the permission engine wired to nothing — the exact failure
+§A-13.2 exists to rule out. Only `@/lib/cookies` (transport) and `next/cache`
+(revalidator) are stubbed; sessions are genuinely issued by T-032, verified by
+T-032, and permissions genuinely loaded by T-031.
+
+**One documented exception to the pipeline rule, asserted to stay one.**
+`markMessageReadAction` writes `read_at`/`read_by_user_id` outside `mutate()`,
+because `mutate()` refuses `view` outright and `contact` has no other applicable
+action — T-068 reasoned this out in its module header. It is exempt from the
+*pipeline* requirement, not from authorization: it calls the same `assertCan`,
+and the sweep proves it refuses 401 and 403 like everything else.
+`PIPELINE_EXCEPTIONS` is asserted to have exactly one key, so a second cannot be
+added quietly.
+
+**The static import test targets the cause, not the symptom.** §A-13.2's last
+row says a public response containing a `faculty_private` field fails the test.
+Scanning rendered responses would only catch it when a row happens to be
+populated; the import is what makes the leak possible, and it is checkable
+always. `isolation.test.ts` also states the rule positively — the only
+`lib/modules` import on the public side is `admission/open`, and that module is
+asserted to touch no table and take no session.
+
+### Two teardown faults worth recording
+
+**A bare `t110_%` cleanup sweep is cross-file destructive.** Vitest runs spec
+files in parallel; a prefix sweep in one file's `afterAll` deleted another
+file's fixtures mid-assertion — twelve failures across two files, looking
+nothing like a teardown fault. Fixed by scoping the prefix to a per-file
+`RUN_TAG`, and the reasoning is in the code so it is not rediscovered.
+
+**The sabotage runs create rows the fixtures do not.** Under a removed guard,
+`createUserAction` stops refusing and genuinely inserts the account row 7
+expects to be rejected. Tracking only what `fixture()` created would leave that
+behind on exactly the runs this card asks to be performed. `cleanup()` now
+sweeps its own prefix as a second pass, verified against a deliberately failing
+run: 105 failures, database back to one user.
+
+### Verification
+
+`tsc --noEmit`, `eslint .`, `prettier --check` on `tests/**` all clean.
+**698 / 698 tests in 31 files.** `next build` clean.
+
+The database is left exactly as found — one user (`superadmin`). The 20 sessions
+and one `activity_logs` row still present belong to `superadmin` and are dated
+07:35–07:47, from B-12's axe audit; they predate this session and were not
+touched.
+
+**The Contract is self-enforcing.** `pipeline.test.ts` reads its own directory
+and asserts no `.skip`, `.todo` or `.only` (including `.only`, the quiet one
+that disables every *other* test while CI stays green), that `vitest.config.ts`
+still globs `tests/**`, and that `ci.yml` still runs `npm test`.
+
+### Not done, and one thing worth knowing
+
+**No defects were fixed.** The card's Stop line is "Tests only — fix defects it
+finds under new task ids", and the suite found none that warranted one. The
+closest is `markMessageReadAction` validating before it authenticates, so an
+anonymous caller gets a 422 naming a schema field instead of a 401. It leaks the
+shape of a one-field schema and writes nothing either way, so it is **pinned as
+current behaviour** in `every-endpoint.test.ts` rather than filed — if the
+ordering is ever brought in line with `mutate()`, that assertion is what will
+notice.
+
+**`npm test` still carries `--passWithNoTests`** (T-005). This suite blocks CI
+today because `vitest.config.ts` globs `tests/**` and `ci.yml` runs `npm test` —
+both now asserted — but that flag means a CI run that somehow collected nothing
+would still be green. Outside this card's Files list; worth an id whenever
+T-114 touches the pipeline.

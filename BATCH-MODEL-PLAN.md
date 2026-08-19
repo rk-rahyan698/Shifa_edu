@@ -56,7 +56,7 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | **B-11** | T-101 ✅, T-102 ✅| Responsive images, font subsetting | **Sonnet** | Low-Medium | Low | Two narrow, well-bounded delivery tasks. Bangla subsetting needs care but the target is measurable. | **Completed** |
 | **B-12** | T-104 ✅ | Accessibility remediation, both locales | **Opus** | High | Medium | A whole-site audit with the loosest scope of any card — judging what to fix, across two scripts and two locales, is the work. | **Completed** |
 | **B-12a** | T-105 ✅ | Fix admin dashboard 500 (`created_at` → `submitted_at`) | **Sonnet** | Low | Low | Added by B-12, which found `/admin` had answered 500 for every admin since T-052 and proved the one-word fix sufficient. Its own id because a `done` task's output is superseded rather than edited. | **Completed** |
-| **B-13** | T-110 | Authorization matrix test suite | **Opus** | High | High | ~40 cases that decide whether the permission model actually holds. A plausible-looking suite that misses a hole is worse than no suite, because it reads as proof. | Pending |
+| **B-13** | T-110 ✅ | Authorization matrix test suite | **Opus** | High | High | ~40 cases that decide whether the permission model actually holds. A plausible-looking suite that misses a hole is worse than no suite, because it reads as proof. | **Completed** — 236 cases |
 | **B-14** | T-111 | Repository & constraint integration tests | **Sonnet** | Medium | Low | Mechanical derivation from a schema that already exists and 15 committed migrations. | Pending |
 | **B-15** | T-112 | E2E golden paths, both locales, mobile | **Sonnet** | Medium | Low-Medium | Fiddly but well-defined — the paths are named in the card. | Pending |
 | **B-16** | T-113 | Content & ethics gates | **Opus** | High | High | The last thing standing between `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, unconsented faces, and unverified statistics reaching a live school site. Leakage detection is the subtle part. | Pending |
@@ -102,9 +102,20 @@ since T-052 and filed the one-word correction as T-105 rather than editing the
 `done` T-052 card; B-12a landed it, re-verified live against `shifa_dev` and
 against a re-run of T-104's full axe harness — **the whole site is now clean of
 accessibility violations at every severity, on every route, in both locales.**
-The next batch is **B-13** (T-110, the ~40-case authorization matrix suite),
-Opus, solo — the first card in M8, the verification tier, whose phase gate
-blocks all of M9 and M10 until T-110 through T-114 are done.
+**B-13 has since landed too**, opening M8 with T-110: 236 authorization cases,
+the two universal rows swept across all 93 exported Server Actions, and eight
+deliberate sabotages each proved to turn the suite red. The next batch is
+**B-14** (T-111, repository & constraint integration tests), Sonnet, solo. M8's
+phase gate still holds M9 and M10 shut until T-111 through T-114 are done.
+
+The B-13 call was right, and for a reason the row half-anticipated. "A
+plausible-looking suite that misses a hole is worse than no suite" is exactly
+what mutation testing caught: two of the eight sabotages left the suite entirely
+green on the first attempt. Neither was a hole — both boundaries were held by a
+*second* check the first sabotage did not touch — but a suite that cannot tell
+"still guarded" from "guarded twice, one of them now broken" is reading as more
+proof than it is. The redundant layers are now asserted structurally, which is
+the part no behavioural test could have reached.
 
 The B-10 call was right for the reason given: the hreflang risk was real, and so
 was a second one the row did not anticipate. ADR-005's unprefixed Bangla means

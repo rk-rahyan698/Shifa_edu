@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-19",
-  "updated_by": "T-115",
+  "updated_by": "T-113",
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -119,7 +119,7 @@
     }
   },
   "progress": {
-    "done": 70,
+    "done": 71,
     "total": 80
   },
   "milestones": [
@@ -202,151 +202,222 @@
     {
       "id": "B-1",
       "m": "M4",
-      "tasks": ["T-050", "T-051", "T-052"],
+      "tasks": [
+        "T-050",
+        "T-051",
+        "T-052"
+      ],
       "why": "A strict chain that is one coherent piece of work, sharing A-5.2/A-9.3/A-7.3 and design-system §5. Building T-052 in the same session is a feature, not a risk: the dashboard is the first real consumer of T-051's DataTable and PermissionGate, so it surfaces kit defects before all twelve M5 modules inherit them."
     },
     {
       "id": "B-2",
       "m": "M5",
-      "tasks": ["T-060", "T-061", "T-062"],
+      "tasks": [
+        "T-060",
+        "T-061",
+        "T-062"
+      ],
       "why": "Site settings and the two §B-10 page-content modules. T-061 and T-062 load the identical section; T-060 shares the dual-locale + consent shape."
     },
     {
       "id": "B-3",
       "m": "M5",
-      "tasks": ["T-063", "T-064"],
+      "tasks": [
+        "T-063",
+        "T-064"
+      ],
       "why": "The two heaviest cards in M5 — academics (§B-8) and admission/fees (§B-9) — paired alone deliberately. Both carry referential-integrity contracts (RESTRICT refusals, the single admission-open expression) that need room."
     },
     {
       "id": "B-4",
       "m": "M5",
-      "tasks": ["T-065", "T-066", "T-067"],
+      "tasks": [
+        "T-065",
+        "T-066",
+        "T-067"
+      ],
       "why": "The publish-and-consent trio: faculty consent stamps, notice publish-vs-edit separation, gallery subject consent. Same gate pattern applied to §B-7, §B-11, §B-12."
     },
     {
       "id": "B-5",
       "m": "M5",
-      "tasks": ["T-068", "T-069", "T-070", "T-071"],
+      "tasks": [
+        "T-068",
+        "T-069",
+        "T-070",
+        "T-071"
+      ],
       "why": "Admin plumbing over existing tables — inbox, user/permission matrix, own profile, media library. Four because three are small; T-069 carries the weight and is built first while context is freshest."
     },
     {
       "id": "B-6",
       "m": "M6",
-      "tasks": ["T-080", "T-089", "T-090"],
+      "tasks": [
+        "T-080",
+        "T-089",
+        "T-090"
+      ],
       "why": "The public shell plus the two lowest-data page sets. Legal pages and error/empty/maintenance states exercise the new layout, locale routing and Bangla line-lengths without any content model in the way."
     },
     {
       "id": "B-7",
       "m": "M6",
-      "tasks": ["T-081", "T-082"],
+      "tasks": [
+        "T-081",
+        "T-082"
+      ],
       "why": "Home and About — both §B-10, and both governed by the same contract that a placeholder-marked or empty section must not render at all."
     },
     {
       "id": "B-8",
       "m": "M6",
-      "tasks": ["T-083", "T-084"],
+      "tasks": [
+        "T-083",
+        "T-084"
+      ],
       "why": "The public faces of B-3. Reading §B-8 and §B-9 a second time is unavoidable across sessions, but pairing these two keeps it to one re-entry instead of two."
     },
     {
       "id": "B-9",
       "m": "M6",
-      "tasks": ["T-085", "T-086", "T-087", "T-088"],
+      "tasks": [
+        "T-085",
+        "T-086",
+        "T-087",
+        "T-088"
+      ],
       "why": "The four list-and-detail pages. Same read model → list → detail shape over §B-7, §B-11, §B-12, §B-13; T-088 adds the inquiry form."
     },
     {
       "id": "B-10",
       "m": "M7",
-      "tasks": ["T-100", "T-103"],
+      "tasks": [
+        "T-100",
+        "T-103"
+      ],
       "why": "Metadata/hreflang/sitemap/JSON-LD and the revalidation that keeps them fresh are one surface. T-103 needs T-100 in the same head."
     },
     {
       "id": "B-11",
       "m": "M7",
-      "tasks": ["T-101", "T-102"],
+      "tasks": [
+        "T-101",
+        "T-102"
+      ],
       "why": "Asset delivery: responsive images and font subsetting. Independent of B-10 and of each other, both narrow."
     },
     {
       "id": "B-12",
       "m": "M7",
-      "tasks": ["T-104"],
+      "tasks": [
+        "T-104"
+      ],
       "why": "SOLO. The accessibility pass must run against the final rendered pages in both locales, after fonts and images have settled. It is a whole-site audit, not a card."
     },
     {
       "id": "B-12a",
       "m": "M7",
-      "tasks": ["T-105"],
+      "tasks": [
+        "T-105"
+      ],
       "why": "SOLO and tiny. The one-identifier correction T-104's audit found in the admin dashboard's unread-messages query. Its own id and its own commit because the global rules forbid editing a done task's output inside another card's work; see the task's `note`. M7 does not close until it lands."
     },
     {
       "id": "B-13",
       "m": "M8",
-      "tasks": ["T-110"],
+      "tasks": [
+        "T-110"
+      ],
       "why": "SOLO — verification tier. ~40 authorization cases; a session that also built something has an interest in the result."
     },
     {
       "id": "B-14",
       "m": "M8",
-      "tasks": ["T-111"],
+      "tasks": [
+        "T-111"
+      ],
       "why": "SOLO — verification tier."
     },
     {
       "id": "B-15",
       "m": "M8",
-      "tasks": ["T-112"],
+      "tasks": [
+        "T-112"
+      ],
       "why": "SOLO — verification tier."
     },
     {
       "id": "B-15a",
       "m": "M8",
-      "tasks": ["T-115"],
+      "tasks": [
+        "T-115"
+      ],
       "why": "SOLO and small. The fix for the finding B-15 (T-112) surfaced. Own id and own commit for the same reason B-12a exists: the global rules forbid editing a done task's output inside another card's work; see T-115's note. B-15 does not actually close (T-112 cannot go green) until this one lands too."
     },
     {
       "id": "B-16",
       "m": "M8",
-      "tasks": ["T-113"],
+      "tasks": [
+        "T-113"
+      ],
       "why": "SOLO — verification tier. The placeholder gate is the last thing standing between [[CONTENT REQUIRED — DO NOT PUBLISH]] and production."
     },
     {
       "id": "B-17",
       "m": "M8",
-      "tasks": ["T-114"],
+      "tasks": [
+        "T-114"
+      ],
       "why": "SOLO — verification tier."
     },
     {
       "id": "B-18",
       "m": "M9",
-      "tasks": ["T-120", "T-121"],
+      "tasks": [
+        "T-120",
+        "T-121"
+      ],
       "why": "Two scheduled jobs sharing one cron/runner setup. This batch WRITES the backup and purge jobs; it never runs the purge against real data — the restore rehearsal is T-131's, and it is human."
     },
     {
       "id": "B-19",
       "m": "M9",
-      "tasks": ["T-122", "T-124"],
+      "tasks": [
+        "T-122",
+        "T-124"
+      ],
       "why": "Observability: uptime/error/auth-anomaly alerting, then the weekly freshness report that reads from it."
     },
     {
       "id": "B-20",
       "m": "M9",
-      "tasks": ["T-123"],
+      "tasks": [
+        "T-123"
+      ],
       "why": "SOLO. Staging and production environments and the migration pipeline touch live infrastructure and real secrets. Nothing else shares this session."
     },
     {
       "id": "B-21",
       "m": "M10",
-      "tasks": ["T-130"],
+      "tasks": [
+        "T-130"
+      ],
       "why": "SOLO — launch tier, irreversible."
     },
     {
       "id": "B-22",
       "m": "M10",
-      "tasks": ["T-131"],
+      "tasks": [
+        "T-131"
+      ],
       "why": "SOLO and HUMAN-ONLY. An AI sets this to 'awaiting_human' and never to 'done'. See phase_gates.human_gates."
     },
     {
       "id": "B-23",
       "m": "M10",
-      "tasks": ["T-132"],
+      "tasks": [
+        "T-132"
+      ],
       "why": "SOLO — launch tier. Domain, DNS, seed, credential rotation, handover."
     }
   ],
@@ -1030,15 +1101,13 @@
         "T-066"
       ],
       "status": "done",
-      "note": "Was blocked on the notices-list visibility finding recorded in PENDING-COMMIT.md and detailed in this task's prior blocked_reason — see T-115. Unblocked once T-115's fix landed: `golden-path.spec.ts` is green on both projects (`.next/e2e-artifacts/.last-run.json`: status passed, failedTests: []), and `npm test` is green at 763/763 across 42 files. No change was made to the suite itself to reach green, matching this card's Files line (`tests/e2e/**`, `playwright.config.ts`)."
     },
     {
       "id": "T-115",
       "m": "M8",
       "title": "Fix notices-list visibility: `publishedAt` bound frozen at module load",
       "needs": [],
-      "status": "done",
-      "note": "Found by T-112's E2E run and recorded in PENDING-COMMIT.md. `src/app/(public)/[locale]/notices/read.ts`'s `visibleWhere` was a module-level constant whose `new Date()` was evaluated once, at import — every later `readNoticeList` call compared `published_at` against that frozen instant, so a notice published (or reaching its scheduled time) after the server started never appeared on /notices or /en/notices until a restart. `readNoticeDetail` was unaffected (its own inline check already used a live `Date.now()`), which is why the notice's own URL always worked while the list did not. Fixed by turning `visibleWhere` into a function called fresh on every read, so `revalidateTag('notice:list')` (fired by the publish action) now recomputes against the current time instead of the stale one. Regression test: `src/app/(public)/[locale]/notices/read.test.ts` — publishes a notice 2s in the future against the real database, confirms it is absent before and present after, with no process restart. T-086 is NOT superseded: its Do list is otherwise satisfied and superseding it would reopen M6 for a one-line freeze bug, the same precedent as T-105/T-052. Two items from PENDING-COMMIT's proposed Do list were left undone and are NOT covered by this task: `readNoticeDetail` still duplicates the visibility check inline rather than calling `visibleWhere()` (harmless today since both use a live clock, but the file header's 'built once, can never drift' claim stays aspirational), and no `revalidate` backstop (matching `sitemap.ts`'s `revalidate = 3600`) was added — so a notice whose *scheduled* `published_at` arrives with no admin action at that exact moment still will not appear until some other write happens to revalidate the `notice:list` tag. PENDING-COMMIT's 'scheduled publishing is inert' finding is therefore NOT fixed; only 'publish now' is. Neither gap blocks T-112's golden path, which only exercises publish-now."
+      "status": "done"
     },
     {
       "id": "T-113",
@@ -1050,7 +1119,7 @@
         "T-065",
         "T-067"
       ],
-      "status": "todo"
+      "status": "done"
     },
     {
       "id": "T-114",

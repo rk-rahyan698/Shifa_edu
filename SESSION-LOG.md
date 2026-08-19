@@ -3002,3 +3002,178 @@ stopped. Dev and production builds cannot share `.next/` while both are running.
 The last two steps of the card's own golden path, for the reason above. Nothing
 was trimmed from the Do list, and no Verify was skipped or softened in order to
 reach a green result.
+
+---
+
+## 2026-08-19 — B-16: T-113
+
+**by:** T-113 · **next:** B-17 (T-114), the last task in M8
+
+All six §A-13.3 gates are built and green: **57 new cases, 820/820 across 48
+files, clean on three consecutive full runs**, typecheck and lint clean. The
+database was left exactly as found — a post-run count of every table the suite
+writes to returns zero.
+
+M8 does not close yet; T-114 is still `todo`, so the phase gate still holds M9
+and M10 shut. `progress.done` is 71 / 80.
+
+### What was built
+
+`tests/gates/**` and `scripts/check-i18n-parity.ts` — the card's two Files
+entries, nothing else touched.
+
+| File | Gate | Cases |
+|---|---|---|
+| `scripts/check-i18n-parity.ts` | i18n parity (runnable standalone) | — |
+| `harness.ts` | shared: DB client, rollback tx, constraint drop, dev-server control, fixtures | — |
+| `placeholder-sweep.ts` | the schema-discovering placeholder sweep | — |
+| `placeholder.test.ts` | placeholder guard | 12 |
+| `consent.test.ts` | consent — faculty, committee, gallery photo | 12 |
+| `statistics.test.ts` | statistic honesty | 6 |
+| `i18n-parity.test.ts` | i18n parity, incl. the admin namespace | 10 |
+| `leakage.test.ts` | private-data leakage, transitive | 8 |
+| `retention.test.ts` | retention outcome + `purge_after` | 9 |
+
+### Every gate is a detector plus a proof that it fires
+
+Nearly every content table in this database is empty, so a sweep that finds
+nothing proves nothing. That shaped the whole batch: each gate is written as a
+detector, and each detector is then shown to fire on a deliberately seeded
+violation and to stay quiet once it is removed — the card's Verify, taken
+literally.
+
+Two techniques carry it.
+
+**Dropping a CHECK inside the doomed transaction.** The genuinely dangerous rows
+— a *published* faculty profile with no consent, an *active* statistic with no
+`verified_on` — cannot be inserted, because migrations 0015 and 0005 refuse them.
+So `withoutConstraint` issues `ALTER TABLE … DROP CONSTRAINT` inside the same
+transaction `withRollbackTx` is already going to roll back. PostgreSQL makes DDL
+transactional, so the constraint is restored by the same ROLLBACK that discards
+the row, and it is never absent outside that transaction. What this models is
+exactly the card's Contract: a future migration loosens the CHECK, and the gate
+is the last thing still watching.
+
+**Driving a real server.** The consent gate's Verify says each case must be
+"reached through a public read", and the Contract's worry is a *publication
+path* — "a preview route, an unfiltered query, an album cover, a cached page" —
+which no query-level assertion can see. So the suite starts a dev server, plants
+each unconsented entity, and reads the HTML of `/faculty`, `/about` and
+`/gallery` in **both** locales. Dev rather than a production build because the
+probe has to flip a row's state and read the consequence twice in one process,
+which `revalidate = 3600` plus the fetch cache makes impossible.
+
+The layer was mutation-tested rather than assumed: removing `isActive: true`
+from the gallery page's query turned the gallery case **red while every
+database-level assertion in the file stayed green**. The two layers failing at
+different things is the reason for having both.
+
+### Finding 1 — the placeholder gate is red against `shifa_dev`, correctly
+
+`prisma/seed.ts` writes the canonical marker into `page_translations.meta_title`
+because the column is NOT NULL and §B-19 forbids the seed from inventing the
+school's page titles. **Those 16 rows (8 pages × 2 locales) are rendering right
+now**, confirmed over HTTP:
+
+```
+/         -> <title>[[CONTENT REQUIRED — DO NOT PUBLISH]]</title>
+/about    -> <title>[[CONTENT REQUIRED — DO NOT PUBLISH]]</title>
+/faculty  -> <title>[[CONTENT REQUIRED — DO NOT PUBLISH]]</title>
+```
+
+This is the handoff the plan already describes rather than a defect: the seed
+plants markers, this gate refuses to call the site publishable, and **T-130**
+replaces them. `content_gate` in `build-state.json` wires that ordering, and
+T-130's own Verify — "T-113 gates pass **against production data**" — only makes
+sense if the gate is expected not to pass against a seeded development database.
+
+So the live sweep allows *exactly* the canonical literal in *exactly* that one
+documented scaffold column, reports it loudly on every run, and fails hard on
+anything else — a variant, or the marker in any other column. `GATES_STRICT=1`
+removes the allowance entirely and turns the suite red on all 16; it is what
+T-130 and the deploy pipeline run. Leaving the suite permanently red instead
+would have been the more literal choice and the worse one: a suite nobody can
+run green is a suite nobody reads.
+
+### Finding 2 — the consent gate's reachability layer cannot prove what it looks like it proves
+
+Migration 0015's CHECKs make *publicly visible* and *consented* logically
+equivalent for all three entities (`is_active = FALSE OR publish_consent_at IS
+NOT NULL`, and the same shape for the other two). An unconsented entity can
+therefore only exist in an unpublished state, and **no fixture this layer can
+legally plant separates "the page filtered on consent" from "the page filtered
+on publication status."**
+
+Recorded in the file rather than papered over, because the layer reads like a
+consent proof and is not quite one. What it does prove is still the Contract's
+worry — that the rendered page honours publication state, and therefore, given
+the CHECK, consent. The published-and-unconsented case is covered by the
+detection layer instead, which is why both exist.
+
+### Finding 3 — `next dev` silently broke another suite
+
+The first full run after the harness worked came back **2 failed**, both in
+T-103's `src/lib/cache.isr.test.ts`. Cause: `next dev` and `next build` share
+`.next/`, and dev overwrites `prerender-manifest.json` — 23 prerendered routes
+become 6. That test guards on the manifest *existing*, not on it being a
+production one, so it ran against the dev manifest and failed pointing at ISR,
+nowhere near the gate that caused it. The previous session's note that "dev and
+production builds cannot share `.next/` while both are running" turns out to
+have a second edge: they cannot share it **sequentially** either.
+
+`next.config.js` is not in this card's Files list, so `distDir` could not be
+redirected. The harness instead snapshots `.next`'s top-level artifacts before
+starting the server and writes them back after stopping it. Residual, stated in
+the file: `.next/server/**` is left dev-shaped, so a `next start` immediately
+after a gates run serves a dev tree. Nothing does that today — Playwright
+rebuilds first, and `E2E_NO_BUILD=1` is already flagged as developer-only.
+
+A second defect in the same area: the teardown killed the shell **before**
+`taskkill /T`, which orphaned the Next process and left a listener on port 3113
+across runs. The next run then failed with `EADDRINUSE`, surfaced as "the dev
+server exited before answering" — a message pointing at the wrong thing. The
+tree kill now runs first, while there is still a parent to walk from, and the
+port is verified free after every run.
+
+### Smaller things worth keeping
+
+- **The placeholder sweep discovers its own targets** from `information_schema`
+  rather than a hardcoded table list, so a table added by a future migration is
+  covered the day it appears. A companion test fails if any table is neither
+  swept nor named in `NOT_PUBLISHED_CONTENT` with a reason — a new table cannot
+  be forgotten, only classified. A second test fails on exclusions naming
+  tables that no longer exist, which is the same drift in reverse.
+- **The leakage gate walks the import graph transitively.** T-110's isolation
+  suite reads the imports of public files only, so a public page importing a
+  shared helper that imports `@/lib/modules/faculty/read` passes it. This gate
+  walks from every public entry point to fixpoint and reports the path it took.
+- **`activity_logs`'s timestamp is `created_at`, not `occurred_at`** — worth
+  recording given T-105 was the mirror-image mistake on `contact_messages`.
+- **`purge_after`'s Dhaka boundary is pinned by worked example**: a message
+  submitted at `2026-03-10 01:00+06` (still 2026-03-09 in UTC) purges on
+  `2027-03-10`, not `2027-03-09`.
+- **Retention is asserted as an outcome, not a mechanism.** T-121's purge job is
+  M9 and unbuilt; a gate cannot test a script that does not exist. So it asserts
+  that no contact message outlives its `purge_after` and no audit row passes 24
+  months — true today for a real reason, and it starts failing on its own if a
+  message ever ages past the window with nothing purging it.
+
+### Not done, and why
+
+- **No npm script was added.** `package.json` is not in this card's Files list.
+  `node scripts/check-i18n-parity.ts` runs standalone today and
+  `tests/gates/i18n-parity.test.ts` is what makes it blocking; **T-114 owns**
+  wiring both that command and `GATES_STRICT=1` into CI.
+- **The 16 scaffold placeholders were not removed.** They are T-130's, and
+  editing them here would be this card writing content.
+- **Nothing in `src/` was changed.** The one sabotage used to mutation-test the
+  consent gate was reverted and verified against `git status`.
+
+### Housekeeping note for the human
+
+**B-15a / T-115 has no entry in this log.** The task is `done` in
+`build-state.json` and has a commit (`2762273`), but the session that landed it
+did not append its section here, so the fix for the frozen-clock notices bug is
+recorded only in `build-state.json`'s task note. Flagging rather than
+back-filling it — writing another session's account from its commit would be
+this session inventing a record it did not witness.

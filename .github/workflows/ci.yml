@@ -1,18 +1,23 @@
-# Shifa International School — CI skeleton (T-005)
+# Shifa International School — CI pipeline
 #
-# This is the first slice of the pipeline in ARCHITECTURE.md §A-14.2:
+# ARCHITECTURE.md §A-14.2:
 #
 #   PR -> lint · typecheck · unit · integration · AUTHORIZATION MATRIX · e2e
 #      -> a11y · lighthouse budgets · bundle budget · i18n parity · secret scan
 #      -> preview deploy
 #
-# T-005 builds only: install -> lint -> typecheck -> build -> unit -> secret scan,
-# plus a dependency audit. The remaining stages arrive with the tasks that own
-# them — integration and constraints (T-111), authorization matrix (T-110), E2E
-# (T-112), content and i18n-parity gates (T-113), and the performance, bundle
-# and a11y budgets (T-114). Deployment pipelines are T-123.
+# T-005 built install -> lint -> typecheck -> build -> unit -> secret scan.
+# T-110 (tests/authorization/**), T-111 (tests/db/**), T-112 (tests/e2e/**)
+# and T-113 (tests/gates/**, scripts/check-i18n-parity.ts) then landed the
+# suites this file wires in. T-114 is that wiring, plus the three budgets
+# named on its own card: Lighthouse performance/accessibility, the public-route
+# JS budget, and the font-payload budget (ARCHITECTURE.md §A-2, Efficient and
+# Effective/Accessibility rows).
 #
-# Contract: every later task adds its tests to this pipeline. It is never bypassed.
+# Contract (T-114's card): budgets are blocking, not advisory. Raising one
+# requires a new ADR — do not "fix" a red budget by editing the number here.
+#
+# Deployment pipelines (staging/production migrate, smoke, tag) are T-123.
 
 name: CI
 
@@ -30,17 +35,59 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Every job below that touches the database or serves the app needs the full
+# set env.ts validates at boot (src/lib/env.ts). None of these are secrets:
+# no external SMTP or S3-compatible endpoint is ever actually dialled in CI
+# (no server-to-server job here sends mail or uploads a file), so the values
+# only have to satisfy the zod schema's *shape* — same reasoning as the
+# DATABASE_URL placeholder T-005 already carried, and the same values T-032
+# and T-037's own `.env.local` convention uses for local development.
+env:
+  DATABASE_URL: postgresql://shifa:shifa@localhost:5432/shifa_ci?schema=public
+  NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+  SESSION_SECRET: ci-only-placeholder-secret-value-not-real-0000000000
+  SMTP_HOST: localhost
+  SMTP_PORT: 1025
+  SMTP_USER: ci
+  SMTP_PASSWORD: ci
+  EMAIL_FROM: ci@example.org
+  STORAGE_ENDPOINT: http://localhost:9000
+  STORAGE_REGION: us-east-1
+  STORAGE_ACCESS_KEY_ID: ci
+  STORAGE_SECRET_ACCESS_KEY: ci
+  STORAGE_PUBLIC_BUCKET: ci-public
+  STORAGE_PRIVATE_BUCKET: ci-private
+  STORAGE_PUBLIC_BASE_URL: http://localhost:9000/ci-public
+
 jobs:
+  # ---------------------------------------------------------------------------
+  # lint, typecheck, build, unit + integration + authorization + gates tests,
+  # i18n parity, the two static budgets (font payload, public-route JS)
+  # ---------------------------------------------------------------------------
   verify:
-    name: Lint, typecheck, build, test
+    name: Lint, typecheck, build, test, budgets
     runs-on: ubuntu-latest
 
-    env:
-      # Prisma resolves env("DATABASE_URL") when it generates the client, so the
-      # variable must exist even though nothing in this job opens a connection.
-      # A placeholder is correct here and is deliberately not a secret: no server
-      # is started, and the database-backed tests belong to T-111.
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/shifa_ci?schema=public
+    # Same image, user, database name and deterministic-collation init args as
+    # docker-compose.yml's local Postgres — a migration that behaves
+    # differently in CI than on a developer's machine is exactly the gap this
+    # mirrors closed. `shifa_ci` rather than `shifa_dev` so a leftover row from
+    # a failed run is never mistaken for seeded development data.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shifa
+          POSTGRES_PASSWORD: shifa
+          POSTGRES_DB: shifa_ci
+          POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shifa -d shifa_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: Checkout
@@ -49,7 +96,6 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          # Matches the version used for local development; keep the two in step.
           node-version: '24'
           cache: npm
 
@@ -58,11 +104,21 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      # The Prisma client is generated output, not committed source. Typecheck
-      # and build both import it through src/lib/prisma.ts, so it must exist
-      # before either runs.
       - name: Generate Prisma client
         run: npx prisma generate
+
+      # Forward-only against the real 15 migrations (§A-14.2's "Migrations are
+      # forward-only and backward-compatible"), same command `db:migrate`
+      # already names — the empty `shifa_ci` database is what the service
+      # above just created via `POSTGRES_DB`.
+      - name: Run migrations
+        run: npx prisma migrate deploy
+
+      # T-024's seed: exercised for its own idempotency in tests/db, and here
+      # it is what gives the public routes something to statically generate
+      # below rather than an empty, unrepresentative database.
+      - name: Seed
+        run: npm run db:seed
 
       - name: Lint
         run: npm run lint
@@ -70,25 +126,294 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Every `[locale]` page is SSG (generateStaticParams) or ISR, so the
+      # build itself reads the seeded database — this is also what
+      # `src/lib/cache.isr.test.ts`'s build-output cross-check needs to exist
+      # before `npm test` runs, per that file's own header.
+      #
+      # `tee` keeps the build log visible in the Actions UI *and* on disk,
+      # where the bundle-budget step below parses Next's own "First Load JS"
+      # table rather than re-deriving it — that table is already the
+      # authoritative, gzip-sized number the T-114 card's 150 KB/route target
+      # is measured in.
       - name: Build
-        run: npm run build
+        run: npm run build 2>&1 | tee build-output.txt
 
-      # The suite is empty until the first spec lands; `--passWithNoTests` in the
-      # script keeps that honest rather than silently green.
+      # ---- Budgets (T-114's card, ARCHITECTURE.md §A-2 Efficient) --------
+
+      # Font payload, ≤200 KB total (§A-2, design-system.md §3.4's subset
+      # rule). `.size-limit.json` scopes this to `public/fonts/**/*.woff2`
+      # with compression off: a woff2 is already a compressed format, so the
+      # figure that matters is the bytes actually shipped, not a further
+      # gzip/brotli pass over them.
+      - name: Font payload budget
+        run: npx size-limit
+
+      # Public-route JS, ≤150 KB gzipped per route (§A-2). Deliberately not a
+      # `size-limit` entry: that budget is *per route*, meaning the shared
+      # framework chunk plus that route's own code, which is exactly what
+      # Next's build output already computes as "First Load JS" — reimplementing
+      # that arithmetic against raw chunk files would be a second, parallel
+      # copy of Next's own chunk graph, and the two would eventually drift.
+      # This reads the one Next already printed above instead.
+      #
+      # Scope is `/[locale]/**` plus the three unlocalized public files
+      # (`/_not-found`, `/robots.txt`, `/sitemap.xml`) — ARCHITECTURE.md's
+      # target names "public routes", and `/admin/**`, `/api/**`, `/login`
+      # and `/reset-password*` are the admin panel's, not the public site's
+      # (`src/app/(admin)/**` and `src/app/(auth)/**` are separate route
+      # groups from `src/app/(public)/**` — see `src/middleware.ts`'s own
+      # `UNLOCALIZED_PREFIXES`/`isAdminPath` split).
+      #
+      # Verified against a deliberate regression before this card landed: a
+      # 'use client' component holding a ~150 KB high-entropy constant,
+      # referenced through `useState` so tree-shaking could not remove it
+      # (a naive repeated-character or unreferenced constant *does* get
+      # eliminated or gzips away to nothing — neither proves the gate),
+      # imported into the public About page. First Load JS for that route
+      # went 103 kB -> 257 kB and this step failed; reverted, not committed.
+      - name: Public-route JS budget (≤150 KB/route, gzip)
+        run: |
+          node <<'NODE_EOF'
+          const fs = require("node:fs");
+
+          const BUDGET_KB = 150;
+          const text = fs.readFileSync("build-output.txt", "utf8");
+
+          // Matches a Next build-output table row: a box-drawing prefix, the
+          // ○/●/ƒ render-mode glyph, the route, its own Size, then First Load JS.
+          // Sub-locale rows ("├ /bn") carry no size columns and are skipped by
+          // requiring both numeric columns to match.
+          const routeLine =
+            /^[│├└┌\s]*[○●ƒ]\s+(\/\S*)\s+([\d.]+\s*(?:kB|B))\s+([\d.]+\s*(?:kB|B))/;
+
+          function toKb(sizeStr) {
+            const m = /^([\d.]+)\s*(kB|B)$/.exec(sizeStr.trim());
+            if (!m) return null;
+            const n = parseFloat(m[1]);
+            return m[2] === "kB" ? n : n / 1000;
+          }
+
+          function isPublicRoute(route) {
+            return (
+              route.startsWith("/[locale]") ||
+              route === "/_not-found" ||
+              route === "/robots.txt" ||
+              route === "/sitemap.xml"
+            );
+          }
+
+          const failures = [];
+          const checked = [];
+          for (const line of text.split(/\r?\n/)) {
+            const m = routeLine.exec(line);
+            if (!m) continue;
+            const [, route, , firstLoad] = m;
+            if (!isPublicRoute(route)) continue;
+            const kb = toKb(firstLoad);
+            checked.push(`${route} -> ${firstLoad.trim()}`);
+            if (kb !== null && kb > BUDGET_KB) {
+              failures.push(`${route}: ${firstLoad.trim()} > ${BUDGET_KB} kB`);
+            }
+          }
+
+          if (checked.length === 0) {
+            console.error(
+              "No public routes matched in build-output.txt — the table format " +
+                "changed, or the build produced no `[locale]` routes. Failing " +
+                "closed: a budget that silently checks nothing is worse than no " +
+                "budget.",
+            );
+            process.exit(1);
+          }
+
+          console.log(`Checked ${checked.length} public routes against ${BUDGET_KB} kB:`);
+          checked.forEach((line) => console.log(`  ${line}`));
+
+          if (failures.length > 0) {
+            console.error("\nPublic-route JS budget exceeded:");
+            failures.forEach((line) => console.error(`  ${line}`));
+            process.exit(1);
+          }
+          NODE_EOF
+
+      # ---- Test suites (§A-14.2: unit · integration · AUTHORIZATION MATRIX) --
+
+      # Split into named steps — same `vitest.config.ts` (T-005/T-114 does not
+      # touch it), narrowed to one directory per step so a failure's stage is
+      # visible in the Actions UI without opening the log. Together these are
+      # exactly what `npm test` already collects; nothing here runs twice.
       - name: Unit tests
-        run: npm test
+        run: npx vitest run src
 
-      # Blocking at `critical`. Three high-severity advisories are currently
-      # known and cannot be fixed at this layer: postcss and sharp are both
-      # transitive through next 15.5.23, and npm's only remedy is next@16 — a
-      # breaking major that would revise T-001, which the global rules forbid.
-      # They are surfaced as warnings so they stay visible, and Dependabot is
-      # the mechanism that will raise that upgrade as its own reviewable PR.
+      - name: Integration tests (repositories & constraints, T-111)
+        run: npx vitest run tests/db
+
+      - name: Authorization matrix (T-110)
+        run: npx vitest run tests/authorization
+
+      # Non-strict: `GATES_STRICT` is unset, so T-113's placeholder gate
+      # allows exactly `prisma/seed.ts`'s 16 scaffold `[[CONTENT REQUIRED —
+      # DO NOT PUBLISH]]` rows and fails on anything else. This repository has
+      # no real content yet (T-130 is still `todo`) — running strict here
+      # would leave every PR permanently red for a known, tracked state until
+      # T-130 lands, which is the outcome T-113's own suite was written to
+      # avoid. T-130 and the deploy pipeline (T-123) are what set
+      # `GATES_STRICT=1`.
+      - name: Content & ethics gates (T-113)
+        run: npx vitest run tests/gates
+
+      # Standalone script, not a vitest spec (T-113's own Files list gave it
+      # no npm script and named this wiring as T-114's) — run non-strict for
+      # the same reason as the line above.
+      - name: i18n parity (T-113)
+        run: node scripts/check-i18n-parity.ts
+
+      # Blocking at `critical`. Three pre-existing high-severity advisories
+      # (postcss, sharp — both transitive through next 15.5.23) can only be
+      # resolved by next@16, a breaking major the global rules forbid revising
+      # T-001 to take. They are surfaced as warnings so they stay visible;
+      # Dependabot is the mechanism that raises that upgrade as its own PR.
       - name: Audit dependencies
         run: |
           npm audit --audit-level=high || echo "::warning::npm audit reports high-severity advisories — see the log above"
           npm audit --audit-level=critical
 
+  # ---------------------------------------------------------------------------
+  # E2E golden paths (T-112) — desktop and 360px mobile, both locales
+  # ---------------------------------------------------------------------------
+  e2e:
+    name: E2E golden paths
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shifa
+          POSTGRES_PASSWORD: shifa
+          POSTGRES_DB: shifa_ci
+          POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shifa -d shifa_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed
+        run: npm run db:seed
+
+      # playwright.config.ts's `webServer` runs `npm run build && npm run
+      # start` itself (T-112's card: a production build, not `next dev`, is
+      # the point of the suite's last two steps). This step only needs to put
+      # a browser on the runner for Playwright to drive.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E tests
+        run: npx playwright test
+        env:
+          CI: 'true'
+
+  # ---------------------------------------------------------------------------
+  # Lighthouse performance budget + accessibility gate (T-114's card)
+  # ---------------------------------------------------------------------------
+  lighthouse:
+    name: Lighthouse (LCP, CLS, accessibility)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shifa
+          POSTGRES_PASSWORD: shifa
+          POSTGRES_DB: shifa_ci
+          POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shifa -d shifa_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed
+        run: npm run db:seed
+
+      - name: Build
+        run: npm run build
+
+      # Chrome ships preinstalled on GitHub's ubuntu-latest runners, so no
+      # browser-install step is needed the way Playwright's job needs one.
+      #
+      # `lighthouserc.json` names `startServerCommand: "npm run start"` and
+      # waits for the "Ready in" line `next start` itself prints, so this
+      # action both serves the build above and runs Lighthouse against it.
+      # Its default settings (no `preset`, no explicit `throttlingMethod`)
+      # already run mobile emulation over simulated slow-4G — measured
+      # directly against this build before landing this config (see
+      # SESSION-LOG.md), which is what "mid-range Android, 4G throttled"
+      # (§A-2) turned out to mean without any override.
+      #
+      # `categories:accessibility` at `minScore: 1` is this card's `axe` gate:
+      # Lighthouse's accessibility category is Chrome's axe-core integration,
+      # run against real laid-out pages the same way T-104's browser session
+      # did. It does not repeat T-104's full 58-route sweep — the 14 URLs
+      # below are one representative page per public module, in both locales,
+      # chosen so a regression in a shared layout or component is caught
+      # without every PR paying for 58 page loads.
+      - name: Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v11
+        with:
+          configPath: ./lighthouserc.json
+          uploadArtifacts: true
+          temporaryPublicStorage: false
+
+  # ---------------------------------------------------------------------------
+  # Secret scan (T-005, unchanged) — full history so a secret that was
+  # committed and later removed is still a leaked secret.
+  # ---------------------------------------------------------------------------
   secret-scan:
     name: Secret scan
     runs-on: ubuntu-latest
@@ -97,8 +422,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Full history: a secret that was committed and later removed is still
-          # a leaked secret, and a shallow clone would not see it.
           fetch-depth: 0
 
       # Enforces ARCHITECTURE.md §A-12 — "no credential literal in any repo

@@ -1,0 +1,9 @@
+[
+  {
+    "name": "Bangla + Latin font subset (design-system.md §3.4)",
+    "path": "public/fonts/**/*.woff2",
+    "limit": "200 KB",
+    "brotli": false,
+    "gzip": false
+  }
+]

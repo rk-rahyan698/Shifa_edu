@@ -1,0 +1,38 @@
+{
+  "$schema": "https://raw.githubusercontent.com/GoogleChrome/lighthouse-ci/main/docs/assertions.md",
+  "ci": {
+    "collect": {
+      "startServerCommand": "npm run start",
+      "startServerReadyPattern": "Ready in",
+      "startServerReadyTimeout": 60000,
+      "numberOfRuns": 1,
+      "url": [
+        "http://127.0.0.1:3000/",
+        "http://127.0.0.1:3000/en",
+        "http://127.0.0.1:3000/about",
+        "http://127.0.0.1:3000/en/about",
+        "http://127.0.0.1:3000/notices",
+        "http://127.0.0.1:3000/en/notices",
+        "http://127.0.0.1:3000/faculty",
+        "http://127.0.0.1:3000/en/faculty",
+        "http://127.0.0.1:3000/admission",
+        "http://127.0.0.1:3000/en/admission",
+        "http://127.0.0.1:3000/contact",
+        "http://127.0.0.1:3000/en/contact",
+        "http://127.0.0.1:3000/gallery",
+        "http://127.0.0.1:3000/en/gallery"
+      ]
+    },
+    "assert": {
+      "assertions": {
+        "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }],
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }],
+        "categories:accessibility": ["error", { "minScore": 1 }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": ".lighthouseci"
+    }
+  }
+}

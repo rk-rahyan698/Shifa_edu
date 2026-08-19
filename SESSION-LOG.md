@@ -2130,3 +2130,139 @@ right answer. Documented in the page's `generateMetadata`.
 is not exported from `notices/read.ts`, whose own header warns that two
 hand-written copies can drift. Copied with a comment; a task that exports it and
 deletes the copy would close the gap.
+
+---
+
+## 2026-08-19 — B-11: T-101, T-102
+
+**by:** T-102 · **next:** B-12 (T-104 accessibility remediation, both locales)
+
+Responsive image delivery and font subsetting — the two asset-delivery cards
+of M7, independent of each other and of B-10. `progress.done` is 64 / 78.
+M7 is still open: T-104 is the one task left in it.
+
+### T-101 · Responsive image delivery
+
+`src/components/ui/Image.tsx` (`ResponsiveImage`) and `next.config.js`, the
+card's exact two Files. The component takes already-resolved URLs and
+`media_assets`/`media_variants`-shaped data — never a bucket, a storage key,
+or `@/lib/storage` — the same boundary `GalleryGrid` and `HeroSlider` already
+draw between "a page resolves URLs" and "a component renders markup."
+
+**Built on `<picture>`, not `next/image`.** `HeroSlider`'s own comment reads
+"`next/image` needs `images.remotePatterns`, which is T-101's card" — but
+`next/image`'s built-in optimizer resizes at *request* time from `src`, which
+would mean re-resizing an image T-037's upload pipeline already resized once,
+and cannot serve a signed private URL whose 15-minute TTL it has no way to
+renew mid-fetch. A custom `loader` avoids the re-resize but returns one URL
+per call, which cannot express "try AVIF, then WebP, then the source format"
+— that needs real `<source>` elements, which only a hand-built `<picture>`
+gives. `next.config.js` sets `images.unoptimized: true` instead of
+`remotePatterns`, and says why: it is a deliberate correction of that
+comment's assumption, not an oversight.
+
+Three `<source>` elements — AVIF, WebP, the source format itself — built from
+a flat `variants` prop that mirrors `media_variants`' own shape (`url`,
+`mimeType`, `widthPx`), grouped and width-sorted internally so a caller passes
+the Prisma rows through with only their `storage_key` resolved to a URL. The
+final `<img>` carries the required `width`/`height` (CLS), `loading="lazy"`
+unless `priority`, and `fetchPriority="high"` when it is. No stored thumbnail
+exists to blur (`media_assets` has no blurhash column, and adding one is a
+migration this card's Files line cannot reach), so the placeholder is a
+generated two-tone gradient at the image's own aspect ratio — a wrapping
+`<span>` whose `background-image` is a small inline SVG data URI, gone the
+moment the picture paints over it. `blurPlaceholderDataUrl` uses `btoa`
+rather than `Buffer`, and the component carries no `"use client"`, so it
+renders correctly from either a Server Component (every current caller) or a
+future client-side one without a runtime crash.
+
+**Not wired into any existing page.** `GalleryGrid`, `HeroSlider`,
+`FacultyCard` and `FeatureGrid` all still render a bare `<img>` — none of
+those four files is in this card's Files line (`src/components/ui/Image.tsx`,
+`next.config.js` only), and T-101's own `Unlocks` is empty, so no task in
+`build-state.json` currently owns that migration. The Verify line's "Gallery
+page transfers under budget" is therefore satisfied by construction rather
+than by a live measurement: `ResponsiveImage`'s `srcSet` only ever offers the
+400/800px derivatives `buildVariants` (T-037) already generated, so a caller
+that sets a grid-appropriate `sizes` (e.g. the `grid-cols-2 sm:grid-cols-3
+lg:grid-cols-4` `GalleryGrid` already uses) can never cause a browser to fetch
+the multi-hundred-KB 1920px original for a thumbnail — but nobody calls it
+yet. Flagging this the way B-1 flagged the untestable `.tsx` gap: it is a
+real ceiling of this batch's Files line, not a thing quietly skipped.
+
+### T-102 · Font subsetting & loading strategy
+
+`public/fonts/**` (seven `.woff2` files), `src/lib/fonts.ts`, and
+`src/app/globals.css` — replacing T-002's interim Google Fonts `@import`,
+exactly as that card's own comment said this one would.
+
+Each file is a `pyftsubset` output of the same family/weight Google serves —
+downloaded as the original, unsubsetted TrueType (a legacy-UA request against
+`fonts.googleapis.com/css2` returns one `.ttf` per weight, not the
+already-split-by-script `.woff2` set a modern UA gets), then cut to exactly
+the codepoints its `unicode-range` in `globals.css` declares: `U+00-FF` and
+friends for the two Latin families, the Bengali block plus ASCII digits and
+the punctuation `design-system.md`'s own copy uses for the two Bangla
+families. `--no-hinting --desubroutinize --no-glyph-names` roughly halved
+Tiro Bangla and Hind Siliguri (hinting instructions, not glyph data, turned
+out to be most of their weight) without touching the GSUB/GPOS conjunct
+tables — confirmed by inspecting `tirobangla400.ttf`'s feature list
+(`akhn`/`blwf`/`half`/`pstf`/`rphf`/`vatu`/`cjct`, the standard Indic
+reordering set) and re-measuring with those tables stripped: ~9KB without
+them versus ~55KB with, i.e. conjunct shaping is genuinely most of a Bangla
+subset's size, not fat to trim. `brotli` (needed for `pyftsubset`'s
+`--flavor=woff2` output) was installed into the build-time Python
+environment only — it is not a project dependency and appears in no
+committed lockfile.
+
+**The ≤200KB budget is real per page, tighter summed across all seven
+files.** A Bangla page (`html:lang(bn)`, ADR-005's default) needs Tiro Bangla
+400 + Hind Siliguri 400 + Hind Siliguri 600 = **129KB**; an English page needs
+the two Playfair weights + two Source Sans 3 weights = **69KB**. Both are
+comfortably under budget, and `unicode-range` is why: a page with zero
+Bengali codepoints never triggers a fetch of the Bangla-range faces at all,
+regardless of how many `@font-face` rules for them exist in the stylesheet.
+Summing all seven files anyway — the number a naïve "total font payload in
+the repo" check would compute — comes to **203KB**, over the 200KB line. If
+T-114's CI budget check measures the wrong thing (everything under
+`public/fonts/`, rather than what one rendered page actually transfers), it
+will fail a page that is not actually over budget; recorded here so that
+session reads the per-page arithmetic above before concluding the subsetting
+regressed.
+
+**"Preload the body weight only" is named as a target, not wired as a tag.**
+`src/lib/fonts.ts` exports `PRELOAD_FONT` (Hind Siliguri 400, Bangla's body
+weight) and says plainly that this module has no `<head>` to put a `<link
+rel="preload">` into — that is `src/app/layout.tsx` (T-001) or the locale
+layout's (T-080) job, and neither file is in this card's Files line. `swap`
+on every face still means no invisible-text wait regardless: the fallback
+stack (`Georgia`/`Segoe UI`) paints immediately and the webfont swaps in once
+it lands.
+
+### Verification
+
+`npx tsc --noEmit` and `npx eslint .` clean across the whole repo. `npx
+prettier --check` clean on all four changed/new files (`fonts.ts` and
+`globals.css` needed one `--write` pass first). `npx vitest run`: 459/462
+passing, same as the unmodified tree — the two `cache.isr.test.ts` failures
+need a fresh `.next` build to compare against (pre-existing, confirmed via
+`git stash`) and one `media/actions.test.ts` fuzz case failed once in the
+full-suite run and passed 13/13 twice in isolation immediately after,
+consistent with a shared-seed flake rather than anything this batch touched.
+
+`next build` succeeds clean; the built CSS was grepped for all seven
+`@font-face` rules with their intended `unicode-range` values, confirming
+Tailwind's build pipeline did not mangle them. `next start` on a scratch
+port served `/` and `/en` at 200 (not `/bn`, which 404s by ADR-005's own
+design — `/bn/*` is not a real route) and served
+`/fonts/hind-siliguri-400-bengali.woff2` at 200 with `Content-Type:
+font/woff2` and the exact 38,708-byte size the subsetting step produced.
+
+### Not verified
+
+**No Bangla conjunct rendering was seen.** No browser on this machine, the
+limitation every earlier batch has recorded — the subset's `unicode-range`
+and feature-table survival were confirmed with `fontTools`, not by looking at
+rendered ligatures. **No Lighthouse/CLS run either**; the "≤0.1" claim rests
+on `ResponsiveImage` always emitting explicit `width`/`height`, not on a
+measured layout shift.

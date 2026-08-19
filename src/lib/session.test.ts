@@ -20,8 +20,12 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 bootstrapTestEnv();
 
 const { prisma } = await import("@/lib/prisma");
-const { clearedSessionCookieOptions, sessionCookieOptions, SESSION_COOKIE } =
-  await import("@/lib/cookies");
+const {
+  clearedSessionCookieOptions,
+  sessionCookieOptions,
+  SESSION_COOKIE,
+  secureCookiesEnabled,
+} = await import("@/lib/cookies");
 const {
   ABSOLUTE_TIMEOUT_HOURS,
   IDLE_TIMEOUT_HOURS,
@@ -231,15 +235,35 @@ describe("revokeAllForUser", () => {
 });
 
 describe("session cookie attributes (§A-9.2)", () => {
-  it("is HttpOnly, Secure, SameSite=Lax and root-scoped", () => {
+  it("is HttpOnly, SameSite=Lax and root-scoped", () => {
     const expires = new Date("2026-01-01T00:00:00.000Z");
     expect(sessionCookieOptions(expires)).toEqual({
       httpOnly: true,
-      secure: true,
+      secure: secureCookiesEnabled(),
       sameSite: "lax",
       path: "/",
       expires,
     });
+  });
+
+  /**
+   * The half of the `Secure` rule that must never bend. The relaxation exists so
+   * `next dev` on a LAN address can hold a session at all — a browser drops a
+   * Secure cookie from a plain-HTTP origin that is not `localhost`, and the
+   * login then looks like it silently does nothing. Production has TLS (§A-12,
+   * T-123) and gets the flag unconditionally; this asserts that, rather than
+   * asserting whatever the suite's own `NODE_ENV` happens to be.
+   */
+  it("is Secure in production", () => {
+    const original = process.env.NODE_ENV;
+    try {
+      // `NODE_ENV` is a readonly string in Next's types; the cast is the write.
+      (process.env as Record<string, string>)["NODE_ENV"] = "production";
+      expect(secureCookiesEnabled()).toBe(true);
+      expect(sessionCookieOptions(new Date()).secure).toBe(true);
+    } finally {
+      (process.env as Record<string, string | undefined>)["NODE_ENV"] = original;
+    }
   });
 
   it("clears with the same attributes and a past expiry", () => {

@@ -31,12 +31,23 @@ import type { Prisma } from "@prisma/client";
 
 export const PAGE_SIZE = 10;
 
-/** §B-11's visibility condition, in one place. */
-const visibleWhere = {
-  deletedAt: null,
-  statusCode: "published",
-  publishedAt: { lte: new Date() },
-} satisfies Prisma.NoticeWhereInput;
+/**
+ * §B-11's visibility condition, in one place.
+ *
+ * A function, not a module-level constant: a `new Date()` computed once at
+ * module load would freeze `publishedAt`'s upper bound at server-start time,
+ * so every notice published after the server started would stay invisible
+ * on `/notices` until a restart, even though `revalidateTag('notice:list')`
+ * correctly re-runs this read (T-115). Calling it per read keeps the bound
+ * live.
+ */
+function visibleWhere() {
+  return {
+    deletedAt: null,
+    statusCode: "published",
+    publishedAt: { lte: new Date() },
+  } satisfies Prisma.NoticeWhereInput;
+}
 
 // ── /notices — list ─────────────────────────────────────────────────────
 
@@ -63,7 +74,7 @@ export const readNoticeList = cachedRead(
     options: { page: number; categoryCode: string | null },
   ): Promise<NoticeListScreen> => {
     const where: Prisma.NoticeWhereInput = {
-      ...visibleWhere,
+      ...visibleWhere(),
       // A slug only exists for a locale that has a translation row — see the
       // file header. Listing anything else would link to a 404.
       noticeTranslations: { some: { localeCode: locale } },

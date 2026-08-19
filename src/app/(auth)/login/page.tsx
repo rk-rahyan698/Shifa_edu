@@ -24,7 +24,6 @@
  * layout assumes a session that does not exist yet.
  */
 
-import { useRouter } from "next/navigation";
 import { useRef, useState, type FormEvent } from "react";
 
 import { useLocale } from "@/hooks/useLocale";
@@ -58,7 +57,6 @@ const COPY: Record<Locale, Record<string, string>> = {
 };
 
 export default function LoginPage() {
-  const router = useRouter();
   const { locale, t } = useLocale();
   const copy = COPY[locale];
 
@@ -94,11 +92,23 @@ export default function LoginPage() {
       const payload: unknown = await response.json().catch(() => null);
 
       if (response.ok) {
-        // `replace`, not `push`: the login page must not sit in the back stack
-        // behind the panel. `refresh()` discards the Router Cache so the guarded
-        // routes are re-fetched with the session cookie now attached.
-        router.replace(redirectFrom(payload));
-        router.refresh();
+        // A **document** navigation, not `router.replace()`.
+        //
+        // `/login` and `/admin` are in different route groups with *different
+        // root layouts* (`(auth)/layout.tsx` and `(admin)/layout.tsx`), and the
+        // App Router cannot soft-navigate across a root layout boundary — it has
+        // to tear down the document and load a new one. Asking the client router
+        // to do it worked only by accident: `replace()` began the navigation and
+        // the `refresh()` on the next line raced it, refetching `/login` and
+        // cancelling the load often enough that a cold `/admin` simply never
+        // arrived and the form appeared to do nothing at all.
+        //
+        // `location.replace` is the same navigation without the race, and keeps
+        // what `replace()` was chosen for: the login page does not stay in the
+        // back stack behind the panel. `refresh()` is gone with it — a full
+        // document load has no Router Cache to discard and re-fetches every
+        // guarded route with the session cookie now attached.
+        window.location.replace(redirectFrom(payload));
         return;
       }
 

@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-19",
-  "updated_by": "T-112",
+  "updated_by": "T-115",
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -75,9 +75,7 @@
       ]
     }
   },
-  "blocked_on": [
-    "T-112"
-  ],
+  "blocked_on": [],
   "open_decisions_required_before": {
     "ADR-005_route_shape": {
       "affects": [
@@ -121,8 +119,8 @@
     }
   },
   "progress": {
-    "done": 68,
-    "total": 79
+    "done": 70,
+    "total": 80
   },
   "milestones": [
     {
@@ -296,6 +294,12 @@
       "m": "M8",
       "tasks": ["T-112"],
       "why": "SOLO — verification tier."
+    },
+    {
+      "id": "B-15a",
+      "m": "M8",
+      "tasks": ["T-115"],
+      "why": "SOLO and small. The fix for the finding B-15 (T-112) surfaced. Own id and own commit for the same reason B-12a exists: the global rules forbid editing a done task's output inside another card's work; see T-115's note. B-15 does not actually close (T-112 cannot go green) until this one lands too."
     },
     {
       "id": "B-16",
@@ -1025,8 +1029,16 @@
         "T-088",
         "T-066"
       ],
-      "status": "blocked",
-      "blocked_reason": "The suite is built and every step of the card's golden path passes on BOTH viewports except the last one. `readNoticeList` (src/app/(public)/[locale]/notices/read.ts:35-39) builds its visibility filter from a module-level constant whose `new Date()` is evaluated once, when the server process first loads the module; every later read therefore compares `published_at` against the process start time, so a notice published NOW from the admin panel never appears on /notices or /en/notices. `readNoticeDetail` is unaffected — it re-checks against a live `Date.now()` at line 171 — so the notice's own URL works in both locales while the list that should link to it stays empty. Proved by controlled experiment: same URL, same row, data cache cleared both times, visible only when the server was restarted after the publish. That code is T-086's, which is `done`, and this card's Files line is `tests/e2e/**` + `playwright.config.ts`, so the fix cannot be made from inside T-112. Needs a new task id — see PENDING-COMMIT.md."
+      "status": "done",
+      "note": "Was blocked on the notices-list visibility finding recorded in PENDING-COMMIT.md and detailed in this task's prior blocked_reason — see T-115. Unblocked once T-115's fix landed: `golden-path.spec.ts` is green on both projects (`.next/e2e-artifacts/.last-run.json`: status passed, failedTests: []), and `npm test` is green at 763/763 across 42 files. No change was made to the suite itself to reach green, matching this card's Files line (`tests/e2e/**`, `playwright.config.ts`)."
+    },
+    {
+      "id": "T-115",
+      "m": "M8",
+      "title": "Fix notices-list visibility: `publishedAt` bound frozen at module load",
+      "needs": [],
+      "status": "done",
+      "note": "Found by T-112's E2E run and recorded in PENDING-COMMIT.md. `src/app/(public)/[locale]/notices/read.ts`'s `visibleWhere` was a module-level constant whose `new Date()` was evaluated once, at import — every later `readNoticeList` call compared `published_at` against that frozen instant, so a notice published (or reaching its scheduled time) after the server started never appeared on /notices or /en/notices until a restart. `readNoticeDetail` was unaffected (its own inline check already used a live `Date.now()`), which is why the notice's own URL always worked while the list did not. Fixed by turning `visibleWhere` into a function called fresh on every read, so `revalidateTag('notice:list')` (fired by the publish action) now recomputes against the current time instead of the stale one. Regression test: `src/app/(public)/[locale]/notices/read.test.ts` — publishes a notice 2s in the future against the real database, confirms it is absent before and present after, with no process restart. T-086 is NOT superseded: its Do list is otherwise satisfied and superseding it would reopen M6 for a one-line freeze bug, the same precedent as T-105/T-052. Two items from PENDING-COMMIT's proposed Do list were left undone and are NOT covered by this task: `readNoticeDetail` still duplicates the visibility check inline rather than calling `visibleWhere()` (harmless today since both use a live clock, but the file header's 'built once, can never drift' claim stays aspirational), and no `revalidate` backstop (matching `sitemap.ts`'s `revalidate = 3600`) was added — so a notice whose *scheduled* `published_at` arrives with no admin action at that exact moment still will not appear until some other write happens to revalidate the `notice:list` tag. PENDING-COMMIT's 'scheduled publishing is inert' finding is therefore NOT fixed; only 'publish now' is. Neither gap blocks T-112's golden path, which only exercises publish-now."
     },
     {
       "id": "T-113",

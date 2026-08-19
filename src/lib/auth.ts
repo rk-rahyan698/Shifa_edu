@@ -281,8 +281,18 @@ async function registerSuccess(userId: bigint): Promise<void> {
      WHERE id = ${userId}`;
 }
 
-/** Where a forced rotation sends a user before anything else (§A-9.2). T-043 builds it. */
-export const PASSWORD_CHANGE_PATH = "/admin/password";
+/**
+ * Where a forced rotation sends a user before anything else (§A-9.2). T-043
+ * builds it.
+ *
+ * It must stay identical to `CHANGE_PASSWORD_PATH` in `src/middleware.ts`,
+ * which is the constant the guard matches against. It read `/admin/password`
+ * until now — a route that does not exist — so a first login answered with a
+ * redirect to a 404 and only reached the real page because the middleware
+ * happened to rewrite it on the way, costing a round trip to reach a page the
+ * endpoint already knew the address of.
+ */
+export const PASSWORD_CHANGE_PATH = "/admin/change-password";
 
 /** The admin landing page. T-052 builds it; T-041 guards it. */
 export const ADMIN_HOME_PATH = "/admin";

@@ -7,13 +7,27 @@
  * request. A tampered or forged cookie value simply fails to match a
  * `token_hash` and is treated as no session at all.
  *
- * Attributes are fixed by §A-9.2 and are not configurable: `HttpOnly` so script
- * cannot read the token, `Secure` so it never crosses plaintext, `SameSite=Lax`
- * so a cross-site POST cannot ride the admin's session while ordinary top-level
- * navigation still works. `Secure` is set unconditionally rather than only in
- * production — browsers treat `http://localhost` as a secure context and accept
- * Secure cookies there, so `next dev` is unaffected and no environment can
- * accidentally ship the weaker cookie.
+ * Attributes are fixed by §A-9.2: `HttpOnly` so script cannot read the token,
+ * `Secure` so it never crosses plaintext, `SameSite=Lax` so a cross-site POST
+ * cannot ride the admin's session while ordinary top-level navigation still
+ * works.
+ *
+ * `Secure` is unconditional in production and *only* there. It used to be
+ * unconditional everywhere, on the reasoning that browsers treat
+ * `http://localhost` as a trustworthy origin and accept Secure cookies from it,
+ * so `next dev` was unaffected. That is true of `localhost` and `127.0.0.1` and
+ * of nothing else — and `next dev` also prints a LAN address (`http://192.168.…`),
+ * which is the URL used to open the panel from a phone or a second machine.
+ * Over plain HTTP on that origin the browser silently drops the `Set-Cookie`:
+ * the login succeeds, answers `200`, and the very next request arrives with no
+ * session, so T-041's middleware bounces `/admin` straight back to `/login` and
+ * the form appears to do nothing at all. A dropped cookie is not a weaker
+ * cookie, it is no session, and the failure is invisible because nothing errors.
+ *
+ * Production is never relaxed: §A-12 requires TLS there (T-123 terminates it),
+ * `NODE_ENV` is `production` in every deployed build, and the flag is on. The
+ * exemption reaches development and test only, where the traffic is on a
+ * private network by construction.
  */
 
 /**
@@ -28,11 +42,24 @@ export const SESSION_COOKIE = "shifa_session";
 /** The attribute set §A-9.2 mandates. `Partial` of Next's cookie options, by shape. */
 export type SessionCookieOptions = {
   httpOnly: true;
-  secure: true;
+  /** Always `true` in production; see the note at the top of this file. */
+  secure: boolean;
   sameSite: "lax";
   path: "/";
   expires: Date;
 };
+
+/**
+ * Whether the session cookie is marked `Secure`.
+ *
+ * Read from `process.env` rather than from `@/lib/env` on purpose: this module
+ * has no other dependency and is imported by the middleware, and pulling in a
+ * schema that demands SMTP and storage keys to answer one boolean would make a
+ * missing mail credential break the session cookie.
+ */
+export function secureCookiesEnabled(): boolean {
+  return process.env.NODE_ENV === "production";
+}
 
 /**
  * Cookie attributes for a session that ends at `expiresAt`.
@@ -45,7 +72,7 @@ export type SessionCookieOptions = {
 export function sessionCookieOptions(expiresAt: Date): SessionCookieOptions {
   return {
     httpOnly: true,
-    secure: true,
+    secure: secureCookiesEnabled(),
     sameSite: "lax",
     path: "/",
     expires: expiresAt,

@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-19",
-  "updated_by": "T-102",
+  "updated_by": "T-104",
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -119,8 +119,8 @@
     }
   },
   "progress": {
-    "done": 64,
-    "total": 78
+    "done": 65,
+    "total": 79
   },
   "milestones": [
     {
@@ -168,7 +168,7 @@
     {
       "id": "M7",
       "title": "SEO, perf, a11y",
-      "tasks": "T-100..T-104",
+      "tasks": "T-100..T-105",
       "done": false
     },
     {
@@ -270,6 +270,12 @@
       "m": "M7",
       "tasks": ["T-104"],
       "why": "SOLO. The accessibility pass must run against the final rendered pages in both locales, after fonts and images have settled. It is a whole-site audit, not a card."
+    },
+    {
+      "id": "B-12a",
+      "m": "M7",
+      "tasks": ["T-105"],
+      "why": "SOLO and tiny. The one-identifier correction T-104's audit found in the admin dashboard's unread-messages query. Its own id and its own commit because the global rules forbid editing a done task's output inside another card's work; see the task's `note`. M7 does not close until it lands."
     },
     {
       "id": "B-13",
@@ -979,7 +985,17 @@
       "needs": [
         "T-100"
       ],
-      "status": "todo"
+      "status": "done"
+    },
+    {
+      "id": "T-105",
+      "m": "M7",
+      "title": "Fix admin dashboard crash: contact_messages.created_at does not exist",
+      "needs": [
+        "T-104"
+      ],
+      "status": "todo",
+      "note": "Found by T-104's audit. src/app/(admin)/admin/page.tsx line 301 filters contact_messages on `created_at`; that column does not exist (the table's timestamp is `submitted_at`), so /admin answers 500 for every authenticated admin and has since T-052 — which B-1 built and verified with no database on the machine. One identifier. T-052 is NOT superseded: its card's Do list is otherwise satisfied and superseding it would reopen M4 for a typo. T-104 verified that with this line corrected the whole admin panel is axe-clean at every severity, so this is the only thing between the build and a fully clean audit."
     },
     {
       "id": "T-110",

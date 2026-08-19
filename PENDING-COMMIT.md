@@ -1,176 +1,193 @@
-# Pending commit — batch B-10 (complete)
+# Pending commit — batch B-12 (complete)
 
-**B-10 is done.** T-100 and T-103 are both `done`, `blocked_on` is empty, and
-`progress.done` is **62 / 78**. The next batch is **B-11** (T-101 responsive
-image delivery, T-102 font subsetting) — Sonnet, per BATCH-MODEL-PLAN.md.
+**B-12 is done.** T-104 is `done`, `blocked_on` is empty, and `progress.done` is
+**65 / 79**. The total moved from 78 because this session added one task —
+**T-105**, below.
 
-**M7 is not closed.** T-101, T-102 and T-104 remain in it.
+**M7 is not closed.** T-105 is the only thing left in it, and it is a one-word
+change this session has already proved correct.
 
-Nothing in this batch has been committed. **Three commits to make**, in this
-order — the batch's two task commits and then its bookkeeping:
+Nothing has been committed. **Two commits**, in this order:
 
 ```sh
-git add src/lib/seo.ts src/lib/seo.test.ts src/app/sitemap.ts src/app/robots.ts "src/app/(public)"
-git commit -m "T-100: SEO: metadata, hreflang, sitemap, robots, JSON-LD"
+git add -A -- src/app src/components
+git commit -m "T-104: Accessibility remediation pass (both locales)"
 
-git add src/lib/cache.ts src/lib/cache.isr.test.ts "src/app/(public)"
-git commit -m "T-103: ISR wiring & on-demand revalidation"
-
-git add build-state.json SESSION-LOG.md PENDING-COMMIT.md BATCH-MODEL-PLAN.md
-git commit -m "B-10: batch state and session log"
+git add -A -- build-state.json SESSION-LOG.md PENDING-COMMIT.md BATCH-MODEL-PLAN.md
+git commit -m "B-12: batch state and session log"
 ```
 
-> The public page files appear in both of the first two commits on purpose:
-> T-100 added `generateMetadata` to them and T-103 added
-> `generateStaticParams`/`revalidate` to the same files. If you would rather
-> each commit hold only its own hunks, `git add -p` is the way; the two sets of
-> exports do not overlap textually.
+> **`-A` is load-bearing on the first command.** This batch moves two whole
+> directory trees and deletes `src/app/layout.tsx`; a plain `git add <path>`
+> stages the new files but not the old ones' removal, which would commit the
+> tree with both copies present and two root layouts fighting. `-A -- src/app
+> src/components` stages additions, modifications and deletions under those two
+> paths and nothing else.
+>
+> Staged, it comes to **1 addition, 1 deletion, 9 modifications and 88
+> renames** — git detects the moves as renames, so `git log --follow` still
+> works on every admin file.
 
-`build-state.json` was edited **surgically, not reformatted** — `git diff` on it
-shows exactly 4 changed lines (`updated_by`, `progress.done`, and the two
-`status` fields). Please keep it that way; `prettier --write` on that file
-collapses several hundred expanded array lines.
+`build-state.json` was edited **surgically** — `git diff --numstat` shows 21
+insertions, 5 deletions. Please keep it that way; `prettier --write` on that
+file collapses several hundred expanded array lines.
 
-Do **not** run `npm run format`. The same five pre-existing files
-(`globals.css`, `env.ts`, `fonts.ts`, `prisma.ts`, `types/db.ts`) still fail
-`format:check`. This batch's own files are clean.
-
----
-
-## The headline: this machine has a database now
-
-Every session since B-1 recorded that no database existed here, and every M5 and
-M6 card was verified without one. **That is no longer true.** Postgres is live
-on 5432, seeded, and both cards in this batch were verified against it and
-against a real `next build` / `next start` — including a measured query count,
-not a reasoned one.
-
-B-11 onward should assume live verification is available.
+Do **not** run `npm run format`. The same **24** pre-existing files fail
+`format:check`, and that count is unchanged by this batch — verified by stashing
+this work and re-running against `HEAD`.
 
 ---
 
-## What was verified, and how
+## Two things worth knowing before anything else
 
-| Claim | How it was checked |
-|---|---|
-| `/` and `/en` emit **different canonicals** | live `curl`, dev and production |
-| alternates are **reciprocal and distinct** | live, plus 71 unit tests in `seo.test.ts` |
-| sitemap **excludes untranslated English** | live: 18 entries, 13 bn + 5 en, all 8 English `pages` URLs absent |
-| **static generation per locale** | `next build`: every localized route generated as `/bn/…` **and** `/en/…` at `1h` |
-| **0 DB queries on a cache hit** | `pg_stat_all_tables` scan delta over 100 requests = **0**, with a control that reads 50 |
+### 1. This machine has a browser
 
-The control matters: the same instrument registers 50 table scans across 100
-`/admin` requests with bogus session cookies, so the zeroes are real and not a
-dead counter.
+Every session since B-1 recorded that it did not, including the last one. **Chrome
+151 is installed**, and `axe-core@4.13.0` was already resolvable in
+`node_modules` via `eslint-config-next`. T-104 was therefore run the way the card
+is written — `axe.run()` against real, laid-out pages, 58 route-locale
+combinations — instead of by reading markup.
+
+No dependency was added. The harness drives Chrome over the DevTools Protocol
+with Node 24's built-in `WebSocket` and lives in the session scratchpad, not the
+repo, because T-104's Stop line reserves the CI gate for T-114.
+
+**B-13 onward should assume a browser is available.** T-112 in particular was
+scoped expecting to be the batch that installs the first one.
+
+### 2. The admin dashboard is a 500, and has been since T-052
+
+`/admin` — the page an admin lands on after logging in — answers **HTTP 500 for
+every authenticated user, in both locales.**
+
+`src/app/(admin)/admin/page.tsx` line 301 filters `contact_messages` on
+`created_at`. That column does not exist; the table's timestamp is
+`submitted_at`. `count(*)` fails at parse time whether or not any rows exist, so
+this has never worked. B-1's own finding explains why it was never caught: *"No
+database exists on this machine"* — T-052 was built and verified without one.
+
+**The fix is one word**, and this session proved it sufficient rather than
+assuming it: applied locally, rebuilt, `/admin` audited at HTTP 200 in both
+locales — **zero axe violations at any severity across the whole admin panel** —
+then reverted, with `git status` confirming the committed file untouched.
+
+```diff
+- AND created_at   < now() - make_interval(days => ${UNREAD_MESSAGE_DAYS}::int)
++ AND submitted_at < now() - make_interval(days => ${UNREAD_MESSAGE_DAYS}::int)
+```
+
+It is filed as **T-105** in batch **B-12a**, not applied, because the global
+rules are explicit that a done task's output gets a new id rather than an edit,
+and B-10 set the precedent of recording rather than quietly correcting.
+
+**T-052 is deliberately not marked `superseded`.** That remedy fits a card whose
+output is wrong as a whole; applying it to a one-word typo would reopen M4 and
+misrepresent a dashboard that is otherwise correct. Flagging the interpretation
+because it departs from the letter of the rule.
+
+If you would rather it were simply done, it is a third commit and the diff is
+above — exactly the offer B-10 made about `routeTargetsForModule`.
 
 ---
 
-## One finding that wants a task id
+## What T-104 changed
 
-**Bangla revalidation paths do not name Bangla routes.** Full reasoning and
-evidence are in SESSION-LOG.md under B-10; the short version:
+**`<html lang>` was `bn` on every page in the application.** T-080 recorded it,
+the previous PENDING-COMMIT.md flagged it for T-100, T-100 declined it as out of
+scope and routed it here in as many words. All seventeen English pages declared
+themselves Bangla, as did the admin panel for an English-preference admin. The
+inner-`<div>` `lang` the public layout carried satisfies WCAG 3.1.2 and never
+3.1.1 — the document language is what a screen reader picks its voice from.
 
-`revalidateForModule` passes `revalidatePath` the *public URL*, and ADR-005
-makes that the wrong string for Bangla. The build manifest has `/bn/about` and
-`/en/about` and no `/about`; the prerendered page carries the tag
-`_N_T_/bn/about`. So every Bangla path target silently misses, while English
-works because its URL and route path are the same string.
+Fixed with Next's documented answer, **multiple root layouts**:
 
-**Nothing is broken today.** Tag invalidation carries every change on its own —
-both `/bn` and `/en` home entries list `notice:list`, so publishing a notice
-updates both, which is T-103's Verify and it passes. The path calls are
-redundant belt to those braces; the redundancy is what is misaimed.
-
-`internalRoutePath` and `routeTargetsForModule` are the fix. They are **built,
-documented and unit-tested in `src/lib/cache.ts`, and deliberately left
-unwired**, because wiring them changes two `done` tasks' assertions —
-`src/lib/mutate.test.ts` (T-038) expects `/notices`, and
-`src/lib/modules/home/actions.test.ts` (T-062) expects `/` — and neither file is
-in T-103's Files list. Both were run against the corrected mapping and both
-fail, which is the evidence that the swap is a real behaviour change.
-
-**The task is small:** point `revalidateForModule` at `routeTargetsForModule`,
-then change `/notices` → `/bn/notices` and `/` → `/bn` in those two suites.
-
-If you would rather it had just been done, say so and it can be a fourth commit
-— it is a three-line change plus two assertions. It was left out because the
-global rules are explicit that a done task's output is superseded by a new id
-rather than edited, and because nothing is currently failing because of it.
-
----
-
-## Deviations from Files lists, surfaced not buried
-
-| File | Card | Why |
+| Root layout | `<html lang>` | Covers |
 |---|---|---|
-| `src/lib/seo.test.ts` | T-100 | The Files line names `seo.ts` and no test beside it. The sitemap's English rule cannot be checked by reading the file, and the seeded database holds only placeholders, so the "included once translated" half has no live case. |
-| `src/lib/cache.isr.test.ts` | T-103 | The Files line names `cache.ts` and the page-level exports. The card's Verify is a query-count assertion; this is the part of it that can live in the repo rather than in a session. |
+| `(public)/[locale]/layout.tsx` | the route's `[locale]` | 15 public pages × 2 locales |
+| `(auth)/layout.tsx` *(new)* | `bn` | `/login`, `/reset-password` |
+| `(admin)/layout.tsx` | `users.preferred_locale` | 13 admin pages |
 
-Both follow B-6's precedent. **No `done` task's code was edited**, and nothing
-else outside either Files list was touched.
+`src/app/layout.tsx` is deleted. `admin/**` moved to `(admin)/admin/**` and
+`login`/`reset-password` to `(auth)/`, both with `git mv`; 69 files importing
+`@/app/admin/…` were rewritten. **No URL changed**, and that is asserted, not
+assumed — the same 42 URLs in `app-path-routes-manifest` and the same 23
+prerendered routes in `prerender-manifest`, diffed both directions.
+
+`unstable_rootParams()` would have been five lines and was rejected: deprecated
+on arrival in 15.5, warns on every build, and this codebase is being handed to a
+school.
+
+The other five fixes, in brief — full reasoning in SESSION-LOG.md:
+
+| Fix | Rule | Note |
+|---|---|---|
+| `.link` underlined at rest, not only on hover | WCAG 1.4.1 | Teal on Slate Gray body text is **1.2:1**; §9 already forbids colour alone |
+| `tabIndex={0}` on two scrollable tables | `scrollable-region-focusable` | `role="region"` was tried and **reverted** — it duplicated the section's landmark name |
+| Titles for the 404, the panel, and a public default | WCAG 2.4.2 | A regression this pass introduced by deleting the shared layout, then closed |
+| `DataTableLabels.rowActions`, `sr-only` | `empty-table-header` | Required, not optional, so a new list cannot silently regress it |
+| `sr-only <h1>` on the home page | `page-has-heading-one` | Not the hero's text — that changes every 5s and is absent at zero slides |
+
+**Result: 56 of 58 route-locale combinations clean of critical and serious
+violations.** The two that are not are `/admin` in each locale, for the reason
+above.
+
+**Keyboard walkthrough** (the card's second Verify), driven by synthesised key
+events only: `/contact` 19 tab stops, `/notices` 31, **a visible focus indicator
+at every stop**, no trap, and the contact form completed end to end by keystroke
+including Bangla input and the consent checkbox.
+
+---
+
+## Verification
+
+`tsc --noEmit` and `eslint .` clean. `next build` clean from an empty `.next`.
+
+**`vitest run`: 462 / 462 in 27 files — the first fully green run this project
+has recorded.** B-11's two `cache.isr.test.ts` failures were a stale-build
+artifact and pass against a fresh one. `media/actions.test.ts` flaked once
+mid-session and passed on every other run, the same intermittent B-11 noted.
+
+Audit content was seeded (hero, features, a published notice in both locales, a
+consented faculty member with a photo, a gallery photo and video, an unread
+message), used, then deleted **by id**, with a re-count confirming the baseline.
+One seeded row collided with a test — `gallery/actions.test.ts` pins the YouTube
+id `dQw4w9WgXcQ` and the seed had reused it; the seed was renamed, not the test.
+`users.preferred_locale` was flipped to `en` for the English admin pass and
+restored to `bn`.
 
 ---
 
 ## Deliberately not done
 
-**`<html lang>` is still hardcoded `bn` in `src/app/layout.tsx`.** The previous
-PENDING-COMMIT.md flagged it for T-100. It is not in T-100's Do list and
-`src/app/layout.tsx` is not in its Files line — and the root layout sits *above*
-the `[locale]` segment, so it cannot read the locale without becoming
-locale-aware, which is more than the note implied. The public subtree declares
-`lang`/`dir` on its own wrapper (T-080), which is where a screen reader reads
-it. **T-104's accessibility pass is the natural home**, and it is the next Opus
-batch in M7.
+**Per-page admin titles.** Every admin document now reads "অ্যাডমিন প্যানেল ·
+শিফা ইন্টারন্যাশনাল স্কুল". WCAG 2.4.2 would rather each page named itself, but
+that is a `generateMetadata` export in fifteen `page.tsx` files across eleven
+`done` M5 cards. Wants its own id.
 
-**No Twitter card tags.** `openGraph` is named in T-100's Do list; `twitter` is
-not, and the Stop line is "SEO only".
+**Bangla-specific contrast.** axe measured colour on rendered pages, but
+design-system.md §9 asks in its own words for these ratios to be re-verified
+"against actual Bangla renderings" — stroke weight and the *matra* are not
+things axe evaluates. That row wants a human eye.
 
-**Notice detail `hreflang` uses the requested slug for both locales.** Slugs do
-not fall back (T-086), so the two locales' slugs genuinely differ and a correct
-map needs both — a second read this card's Files line has no room for. A crawler
-that follows a missing alternate gets T-090's 404, which is the right answer.
-Documented in that page's `generateMetadata`.
+**No mobile-viewport pass.** Everything ran at 1280×900; the 360px sweep is
+T-112's Playwright suite.
 
-**The notices sitemap replicates T-086's `visibleWhere` predicate**, because it
-is not exported and `notices/read.ts` belongs to a `done` task. Its own header
-warns that two hand-written copies drift. A task that exports it and deletes the
-copy would close that.
-
----
-
-## Placeholders are now visible in `<title>`
-
-Worth knowing before anyone looks at the site: every
-`page_translations.meta_title` is still `[[CONTENT REQUIRED — DO NOT PUBLISH]]`,
-and that is exactly what the browser tab and the `og:title` show. **This is
-deliberate** and matches what `safe-html.ts` and T-081/T-082 already do — a
-marker nobody can see is a marker nobody replaces. T-113's gate is what refuses
-to launch on it, and T-130 is where the school's real copy arrives.
-
-The same placeholders are why the English sitemap currently lists only the five
-routes whose titles come from `src/i18n/*.json`. It corrects itself the moment
-real English titles are entered.
+**Notice links front-load their metadata** — "প্রকাশ ১৯ আগ, ২০২৬ সাধারণ
+গুরুত্বপূর্ণ <title>". Not a violation, but verbose for anyone tabbing a long
+list. Worth a look whenever T-086 is reopened.
 
 ---
 
 ## Unrelated, pre-existing, and not touched
 
-**One build flake, not a code defect:** killing `next dev` mid-run left a
-corrupted `.next`, and the next `next build` failed with `Cannot find module for
-page: /[locale]/academics`. `rm -rf .next` fixed it; three later builds (one
-clean, two incremental) all succeeded. Worth knowing because the error looks
-like a routing bug and is not one.
+The public 404 is still served with HTTP 200 (`loading.tsx` commits the status
+before `notFound()` throws — needs the `[locale]/(site)/` route-group fix, which
+is a different route-group change from this batch's and was **not** bundled into
+it). `/en/login` still does not exist. The stray tracked file named `on` at the
+repo root is still there. `jsx: preserve` still means no `.tsx` file is
+unit-testable — which is precisely why every assertion in this batch came from a
+real browser rather than from Vitest.
 
-Still unchanged from B-6 and B-9: the public 404 is served with HTTP 200
-(`loading.tsx` commits the status before `notFound()` throws — needs the
-`[locale]/(site)/` route-group fix); the maintenance flag has nothing that
-renders it; `/en/login` does not exist and the middleware sends English admins
-there; the stray tracked file named `on` at the repo root; `ImagePicker` cannot
-be mounted in a route; `jsx: preserve` still means no `.tsx` file is testable;
-`MODULES.site_settings` and `MODULES.contact` have `adminPath` values whose
-routes 404 from the sidebar; and `loadUser()` is duplicated across ten M5 page
-files.
-
-**Still no browser.** No Playwright or Puppeteer is installed — T-112 owns the
-first — so nothing visual in this batch was measured. Everything claimed above
-is `curl`, build output, database counters and unit tests.
+Every `page_translations.meta_title` is still
+`[[CONTENT REQUIRED — DO NOT PUBLISH]]`, so that is still what the browser tab
+shows on public pages. Deliberate; T-113 gates it and T-130 replaces it.

@@ -2266,3 +2266,236 @@ and feature-table survival were confirmed with `fontTools`, not by looking at
 rendered ligatures. **No Lighthouse/CLS run either**; the "≤0.1" claim rests
 on `ResponsiveImage` always emitting explicit `width`/`height`, not on a
 measured layout shift.
+
+---
+
+## 2026-08-19 — B-12: T-104
+
+**by:** T-104 · **next:** B-12a (T-105, the one-line dashboard fix this audit
+found), then B-13 (T-110 authorization matrix suite)
+
+The accessibility remediation pass, run against real Chrome. `progress.done` is
+65 / 79 — the total moved because this session added T-105. **M7 is still open**:
+T-105 is the last thing in it.
+
+### The headline: there is a browser on this machine
+
+Every session since B-1 has recorded "no browser", and PENDING-COMMIT.md said it
+again ten hours ago: "No Playwright or Puppeteer is installed — T-112 owns the
+first — so nothing visual in this batch was measured."
+
+**Chrome 151 is installed at `C:/Program Files/Google/Chrome/Application`**, and
+`axe-core@4.13.0` is already resolvable in `node_modules` (hoisted, via
+`eslint-config-next` → `eslint-plugin-jsx-a11y`). So this card was run the way
+it is written — `axe.run()` inside a real, laid-out page — rather than by
+reading markup. No dependency was added: the harness drives Chrome over the
+DevTools Protocol using Node 24's built-in `WebSocket`, and it lives in the
+session scratchpad, not the repo, because T-104's Stop line reserves the CI gate
+for T-114.
+
+That matters beyond convenience. `color-contrast` and `scrollable-region-focusable`
+cannot be evaluated without layout, and one of the two real content defects
+found here was a contrast measurement.
+
+**B-13 onward should assume a browser is available.** T-112's E2E card in
+particular was scoped on the assumption that it would be the one to install the
+first browser.
+
+### Coverage
+
+**58 route-locale combinations**, every one of them loaded, scripted and
+asserted:
+
+| Surface | Count |
+|---|---|
+| Public pages × 2 locales (incl. `?type=videos` and a deliberate 404) | 30 |
+| `/login`, `/reset-password` | 2 |
+| Admin panel, `preferred_locale = bn` | 13 |
+| Admin panel, `preferred_locale = en` | 13 |
+
+The admin panel is audited twice because ADR-007 makes it bilingual by stored
+preference rather than by URL — there is no `/en/admin` to visit, so the English
+pass is the same thirteen paths with `users.preferred_locale` flipped and
+restored afterward.
+
+Auditing empty pages proves very little, so a representative row was seeded per
+public surface — hero slide, two features, a published pinned notice with both
+locales' slugs, a consented faculty member with a photo, a consented gallery
+photo plus a video, and an unread contact message — then deleted by id at the
+end, with a re-count confirming the baseline. One of those rows collided with a
+test (`gallery/actions.test.ts` pins the YouTube id `dQw4w9WgXcQ`, which the
+seed had reused); the seed row was renamed, not the test.
+
+**Result: 56 of 58 clean of critical and serious violations.** The two that are
+not are `/admin` in each locale, and neither is an accessibility defect — see
+below.
+
+### What was fixed
+
+**1. `<html lang>` was `bn` on every page in the application.** This is the
+defect T-080 recorded, PENDING-COMMIT.md flagged for T-100, T-100 declined as
+out of scope, and PENDING-COMMIT.md then routed here in as many words: "T-104's
+accessibility pass is the natural home." Every English page — seventeen of them
+— declared itself Bangla, and so did the admin panel for an admin whose stored
+preference is English.
+
+The public layout had been compensating with `lang`/`dir` on an inner `<div>`.
+That satisfies WCAG 3.1.2 (Language of Parts) and never 3.1.1 (Language of
+Page): the document's own declared language is what a screen reader picks its
+voice from before it reaches any wrapper, and `html:lang(bn)` in `globals.css`
+was matching English pages too.
+
+Fixed with Next's documented answer for exactly this case, **multiple root
+layouts**. `src/app/layout.tsx` is deleted; each top-level route group now owns
+its own document:
+
+| Root layout | `<html lang>` | Covers |
+|---|---|---|
+| `(public)/[locale]/layout.tsx` | the route's `[locale]` | the 15 public pages × 2 |
+| `(auth)/layout.tsx` *(new)* | `bn` | `/login`, `/reset-password` |
+| `(admin)/layout.tsx` | `users.preferred_locale` | the 13 admin pages |
+
+`admin/**` moved to `(admin)/admin/**` and `login`/`reset-password` to
+`(auth)/`, both by `git mv`. **No URL changed** — route groups contribute no
+path segment — and that is asserted rather than assumed: the
+`app-path-routes-manifest` holds the same 42 URLs before and after, and
+`prerender-manifest` the same 23 prerendered routes, diffed both directions.
+The 69 files importing colocated admin panels via `@/app/admin/…` were rewritten
+to `@/app/(admin)/admin/…`.
+
+`unstable_rootParams()` would have done the same job in five lines and was
+rejected: it is deprecated on arrival in 15.5, warns on every build, and this is
+a codebase being handed to a school to maintain.
+
+**2. Links inside body text were distinguished by colour alone.** `.link` was
+`no-underline` with `underline` on hover, which is design-system.md §5 read
+literally. Teal `#3A7A72` against Slate Gray body text measures **1.2:1** — axe
+`link-in-text-block`, a WCAG 1.4.1 failure, and no pair in the §10 palette that
+is also readable on white reaches the required 3:1. §9 already settles it
+("never rely on color alone"), so the underline is permanent and hover keeps a
+colour shift as the secondary cue. Both link colours are unchanged.
+
+**3. Two scrollable tables were unreachable by keyboard.** The privacy page's
+data inventory and the cookie table both scroll inside `overflow-x-auto` — a
+keyboard user cannot drag a scrollbar, so whatever overflowed was simply
+unavailable. `tabIndex={0}` fixes it (axe `scrollable-region-focusable`).
+
+`role="region"` with an `aria-label` was tried first, which is the usual recipe,
+and **it traded one violation for another**: the enclosing `<section>` is
+already a landmark named by the same heading, so the nested region produced two
+indistinguishable landmarks (`landmark-unique`). Reverted to the bare
+`tabIndex`; each table's `<caption>` already names its content.
+
+**4. Documents without a `<title>`.** Deleting the shared root layout removed
+the one hardcoded `metadata.title` the whole application had been leaning on, so
+the 404 and every admin page lost theirs — a regression this pass introduced and
+then closed. Three fixes: a default on the public root layout (from the
+`readShell` call it already makes, so no extra query), a localized
+`generateMetadata` on the admin root layout, and a real bilingual "page not
+found" title. The last one belongs on `[...notFound]/page.tsx`, **not** on
+`not-found.tsx` — Next takes the title from the route that matched, and a
+`metadata` export on `not-found.tsx` is silently ignored. That was found by
+trying it and watching axe still fail.
+
+**5. The row-actions column header was empty** on the two `DataTable` lists
+(`empty-table-header`). A screen reader announces each action cell by its column
+header, so an empty one leaves a button in a column with no name.
+`DataTableLabels.rowActions` is **required**, not optional, so a future list that
+forgets it is a compile error rather than a silent regression; the string is
+`sr-only` and the tables look identical. `admin.table.actions` already existed in
+both locales.
+
+**6. The home page had no `<h1>`.** It opened with the hero and then a run of
+`<h2>`s, so "jump to first heading" landed mid-page. Added `sr-only`, because
+design-system.md §6 wants the photograph to lead, and taken from the JSON-LD
+node already read rather than from a slide title — a slide title changes every
+five seconds and there are zero slides in the state the site currently ships in.
+
+### The keyboard walkthrough
+
+The card's second Verify, driven by synthesised key events only — no clicks, no
+`.focus()`, no scripted value assignment:
+
+- **`/contact`** — 19 tab stops. Skip link first, then header, then the five
+  form controls in visual order, then submit. **A visible focus indicator at
+  every single stop** (asserted on computed `outline`/`box-shadow`, not by
+  eyeballing). The form was filled entirely by keystroke — Bangla text into the
+  name field included — and the consent checkbox toggled by Space; all five
+  values read back correctly.
+- **`/notices`** — 31 tab stops, every category filter and the notice link
+  reachable, focus indicator visible throughout, and Tab exits the document
+  cleanly rather than cycling. **No keyboard trap.**
+
+### The two routes that are not clean, and why they are not this card's
+
+`/admin` answers **HTTP 500** in both locales. Its four axe violations
+(`document-title`, `html-has-lang`, `landmark-one-main`, `region`) are all
+properties of Next's built-in error page, not of any markup this project wrote.
+
+The cause is one identifier. `src/app/(admin)/admin/page.tsx` line 301 filters
+`contact_messages` on `created_at`; the column is `submitted_at`. `count(*)`
+fails at parse time regardless of rows, so **the dashboard has been a 500 for
+every authenticated admin since T-052** — and B-1's own finding says why nobody
+saw it: "No database exists on this machine", so T-052 was built and verified
+without one. It is the landing page after login.
+
+It was **not fixed here.** The global rules are explicit that a done task's
+output gets a new id rather than an edit, and B-10 set the precedent of
+recording rather than quietly correcting. It is filed as **T-105** with its own
+batch **B-12a**, and T-052 is deliberately *not* marked `superseded` — that
+remedy suits a card whose output is wrong as a whole, and applying it to a
+one-word typo would reopen M4.
+
+What this card did do is **prove the fix is sufficient**: the corrected line was
+applied locally, the tree rebuilt, `/admin` audited at HTTP 200 in both
+locales — **zero violations at any severity, across the entire admin panel** —
+and then reverted, with `git status` confirming the committed file untouched. So
+T-105 is the only thing standing between this build and a completely clean
+audit, and it carries no hidden accessibility debt behind it.
+
+### Verification
+
+`tsc --noEmit`, `eslint .` clean. `next build` clean from an empty `.next`.
+**`vitest run`: 462 / 462 passing in 27 files** — the first fully green run this
+project has recorded; B-11's two `cache.isr.test.ts` failures were a stale build
+artifact and pass against a fresh one. `media/actions.test.ts` flaked once
+mid-session and passed on every subsequent run, the same intermittent B-11 saw.
+
+`prettier --check` reports the **same 24 pre-existing files** as on `HEAD`,
+verified by stashing this work and re-running: the import rewrite added no new
+formatting failures, and only one file of this batch's own
+(`(public)/[locale]/layout.tsx`) needed `--write`. `npm run format` was not run,
+per the standing instruction.
+
+`build-state.json` was edited surgically — `git diff --numstat` shows 21
+insertions and 5 deletions, no reformatting.
+
+### Not done, and observations
+
+**Admin titles are section-level, not per-page.** Every admin document now reads
+"অ্যাডমিন প্যানেল · শিফা ইন্টারন্যাশনাল স্কুল". WCAG 2.4.2 would rather each page
+named itself, but that means a `generateMetadata` export in fifteen `page.tsx`
+files belonging to eleven `done` M5 cards. Wants its own id.
+
+**Notice links front-load their metadata.** A notice link's accessible name is
+"প্রকাশ ১৯ আগ, ২০২৬ সাধারণ গুরুত্বপূর্ণ <title>" — date, category and pin status
+before the headline. Not a violation (the title is in the name) but verbose for
+anyone tabbing a long list, and worth a look whenever T-086's card is reopened.
+
+**Moderate and minor findings outside the Contract were left where fixing them
+would have been guesswork.** The Contract is zero critical *or serious*; after
+this pass the only moderates left anywhere are the three on the 500 page.
+
+**Not measured:** contrast was checked by axe on rendered pages, but not against
+Bangla glyphs specifically at the 17px floor, which design-system.md §9 asks for
+in its own words ("Re-verify these ratios against actual Bangla renderings").
+axe measures colour, not stroke weight, and that row wants a human eye. No
+mobile-viewport pass either — everything above ran at 1280×900, and the 360px
+sweep belongs to T-112's Playwright suite.
+
+**Unchanged and still true:** the public 404 is served with HTTP 200
+(`loading.tsx` commits the status before `notFound()` throws — needs the
+`[locale]/(site)/` route-group fix); `/en/login` does not exist; the stray
+tracked file named `on` at the repo root; `jsx: preserve` still means no `.tsx`
+file is unit-testable, which is why every assertion in this batch came from a
+browser rather than from Vitest.

@@ -55,7 +55,7 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | **B-10** | T-100 ✅, T-103 ✅| SEO metadata, hreflang, sitemap, JSON-LD; ISR | **Opus** | High | Medium | hreflang over an asymmetric locale scheme is easy to get quietly wrong, and it is wrong in search results rather than in a test. Spans every page plus the revalidation that keeps them fresh. | **Completed** |
 | **B-11** | T-101 ✅, T-102 ✅| Responsive images, font subsetting | **Sonnet** | Low-Medium | Low | Two narrow, well-bounded delivery tasks. Bangla subsetting needs care but the target is measurable. | **Completed** |
 | **B-12** | T-104 ✅ | Accessibility remediation, both locales | **Opus** | High | Medium | A whole-site audit with the loosest scope of any card — judging what to fix, across two scripts and two locales, is the work. | **Completed** |
-| **B-12a** | T-105 | Fix admin dashboard 500 (`created_at` → `submitted_at`) | **Sonnet** | Low | Low | Added by B-12, which found `/admin` had answered 500 for every admin since T-052 and proved the one-word fix sufficient. Its own id because a `done` task's output is superseded rather than edited. | Pending |
+| **B-12a** | T-105 ✅ | Fix admin dashboard 500 (`created_at` → `submitted_at`) | **Sonnet** | Low | Low | Added by B-12, which found `/admin` had answered 500 for every admin since T-052 and proved the one-word fix sufficient. Its own id because a `done` task's output is superseded rather than edited. | **Completed** |
 | **B-13** | T-110 | Authorization matrix test suite | **Opus** | High | High | ~40 cases that decide whether the permission model actually holds. A plausible-looking suite that misses a hole is worse than no suite, because it reads as proof. | Pending |
 | **B-14** | T-111 | Repository & constraint integration tests | **Sonnet** | Medium | Low | Mechanical derivation from a schema that already exists and 15 committed migrations. | Pending |
 | **B-15** | T-112 | E2E golden paths, both locales, mobile | **Sonnet** | Medium | Low-Medium | Fiddly but well-defined — the paths are named in the card. | Pending |
@@ -96,12 +96,15 @@ exists, the contract is explicit, and verification is objective.
 - **Completed** — all tasks verified, `build-state.json` updated, awaiting or
   having received the human's single batch commit
 
-**B-1 through B-12 are complete.** M4, M5 and M6 are closed. M7 has T-100, T-101,
-T-102, T-103 and T-104 done, and **is still not closed**: B-12's audit found the
-admin dashboard had been answering HTTP 500 for every admin since T-052, filed
-the one-word correction as **T-105**, and left it unapplied because a `done`
-task's output is superseded rather than edited. The next batch is **B-12a**
-(T-105), then **B-13** (T-110 authorization matrix suite), on Opus.
+**B-1 through B-12a are complete. M4, M5, M6 and M7 are all closed.** B-12's
+audit found the admin dashboard had been answering HTTP 500 for every admin
+since T-052 and filed the one-word correction as T-105 rather than editing the
+`done` T-052 card; B-12a landed it, re-verified live against `shifa_dev` and
+against a re-run of T-104's full axe harness — **the whole site is now clean of
+accessibility violations at every severity, on every route, in both locales.**
+The next batch is **B-13** (T-110, the ~40-case authorization matrix suite),
+Opus, solo — the first card in M8, the verification tier, whose phase gate
+blocks all of M9 and M10 until T-110 through T-114 are done.
 
 The B-10 call was right for the reason given: the hreflang risk was real, and so
 was a second one the row did not anticipate. ADR-005's unprefixed Bangla means

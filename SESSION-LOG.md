@@ -3177,3 +3177,169 @@ did not append its section here, so the fix for the frozen-clock notices bug is
 recorded only in `build-state.json`'s task note. Flagging rather than
 back-filling it — writing another session's account from its commit would be
 this session inventing a record it did not witness.
+
+## 2026-08-20 — B-17: T-114
+
+**by:** T-114 · **next:** M9 is unlocked — no batch selected yet
+
+M8 closes. `progress.done` is 72 / 80. `.github/workflows/ci.yml` now runs a
+Postgres service, the full placeholder env `src/lib/env.ts` requires at boot,
+and every M8 suite by name — none of that existed in CI before this batch, and
+`npm test` alone would have failed on a fresh runner the moment it reached
+`tests/db`, `tests/authorization` or `tests/gates`, all of which open a real
+connection.
+
+### What was built
+
+The card's three Files, plus the one dependency needed to use the file it
+names: `.github/workflows/ci.yml`, `lighthouserc.json`, `.size-limit.json`,
+and `size-limit`/`@size-limit/file` as devDependencies (mirrors T-112's
+Playwright precedent — necessary equipment for the named config file, not new
+application or test source, split into its own commit for the same reason).
+
+| Piece | Mechanism | Why |
+|---|---|---|
+| Postgres in CI | `services.postgres`, same image/user/db-init args as `docker-compose.yml` | `tests/db`, `tests/authorization`, `tests/gates` and the SSG build itself all open a real connection; nothing in CI provided one before this card |
+| Placeholder env | `env:` block at workflow level, one dummy value per `src/lib/env.ts` key | Module-load-time `zod` parse means `next build` throws without all of SMTP_*/STORAGE_*/SESSION_SECRET/NEXT_PUBLIC_SITE_URL, not only DATABASE_URL |
+| Unit / integration / authorization / gates | four `npx vitest run <dir>` steps, one `vitest.config.ts` (untouched) | Named stages per §A-14.2's diagram, same file set `npm test` already collects |
+| i18n parity | `node scripts/check-i18n-parity.ts`, non-strict | T-113's own card named this wiring as T-114's |
+| E2E | new `e2e` job: Postgres service, migrate, seed, `playwright install --with-deps chromium`, `npx playwright test` | `playwright.config.ts`'s own `webServer` builds and starts the app; this job only had to put a browser on the runner |
+| Font payload budget | `.size-limit.json`, `public/fonts/**/*.woff2`, `brotli: false` + `gzip: false` | woff2 is already compressed; the number that matters is bytes shipped, not a further compression pass |
+| Public-route JS budget | inline Node step parsing `next build`'s own "First Load JS" table from a `tee`d build log | That table is already the authoritative gzip-sized per-route figure the 150 KB target is measured in; reimplementing it against raw chunk files would be a second copy of Next's chunk-graph arithmetic that could drift from the first |
+| Lighthouse (LCP/CLS + `axe` gate) | new `lighthouse` job, `treosh/lighthouse-ci-action@v11` against `lighthouserc.json` | Its default settings (no `preset` override) already run mobile emulation over simulated slow-4G — confirmed by direct measurement below, not assumed; `categories:accessibility` at `minScore: 1` is Chrome's axe-core integration, the same engine T-104's browser session used |
+
+### `size-limit`'s config surprised twice, both confirmed by direct testing rather than assumed
+
+`"gzip": false` alone left the check running against a **brotli** size — v13's
+`@size-limit/file` plugin defaults to brotli unless `"brotli": false` is also
+set; `"gzip": false` only stops it choosing gzip *instead*. Found by reading
+`node_modules/@size-limit/file/index.js`'s own branch order, not the docs.
+
+Its config loader also would not see the plugin at all under a `--no-save`
+install — `create-help.js` reads `pkg.packageJson.devDependencies` to decide
+what's installed, so a package physically present in `node_modules` but absent
+from `package.json` is invisible to it. That is what turned the "add
+size-limit" step from a plan into the real, committed devDependency rather
+than an ephemeral `npx` invocation.
+
+### The public-route JS budget was proved against a real regression, not trusted on inspection
+
+Two attempts at "a deliberately oversized import" didn't move the number at
+all before a third did, and both misses are worth keeping:
+
+1. A 250 KB string of a single repeated character, exported but never read.
+   Unchanged — the export was eliminated as dead code; nothing imported it but
+   the marker component.
+2. The same content referenced from the component's return value, but still
+   built from repeated characters. Unchanged again — gzip (or, per the finding
+   above, brotli) crushes a quarter-megabyte of one repeated byte to a few
+   hundred bytes, so even a bundler that kept it would not have moved a
+   *compressed*-size budget.
+3. ~150 KB of `crypto.randomBytes(...).toString('base64')` — genuine entropy,
+   which compression cannot remove — read through `useState` inside the
+   client component actually rendered on the page. `/[locale]/about` went
+   103 kB → 257 kB First Load JS, and the new CI step failed on it with the
+   exact route and both numbers named. Reverted in full afterward: `git
+   checkout` on the one touched page, the throwaway component deleted, `git
+   status` confirmed clean before anything here was written.
+
+The failure mode both misses share — a change that is genuinely dead code, or
+genuinely present but incompressible-cost-free, moving nothing — is exactly
+what a budget gate has to *not* rubber-stamp, so proving the gate meant ruling
+both out rather than stopping at the first attempt that compiled.
+
+### Finding 1 — homepage LCP measures ~3.04s against the 2.5s target
+
+Measured directly, twice, against a real `next build && next start` on this
+machine: Lighthouse's default settings (no `preset`, no throttling override —
+confirmed this is mobile + simulated slow-4G out of the box, matching §A-2's
+"mid-range Android, 4G throttled" with no extra config needed) put `/`'s LCP at
+3040.8ms both runs (Lighthouses's simulated-throttling mode computes the trace
+analytically, which is why the two runs agree to a tenth of a millisecond).
+Accessibility scored 1.0/1.0 — T-104's clean-site result holds.
+
+`render-blocking-insight` names one blocking resource,
+`/_next/static/css/*.css` (7.1 KB), with an estimated FCP/LCP saving in the
+hundreds of milliseconds to low seconds depending on how the audit's own
+metric-savings model amortises it. Recorded as the most likely contributor,
+not asserted as the full 540ms gap's sole cause — attributing the rest with
+confidence would mean profiling render behaviour, which is outside what a CI
+config card can do and outside its Files list regardless.
+
+Not fixed here: nothing in `.github/workflows/ci.yml`, `lighthouserc.json` or
+`.size-limit.json` touches how the homepage loads its stylesheet. Recommended
+as its own task — suggested **T-116 · Homepage LCP exceeds the 2.5s budget**,
+M8 or M9, `needs: []`, Files somewhere in `src/app/(public)/[locale]/layout.tsx`
+or wherever the render-blocking stylesheet is declared — left for a human
+decision per the same rule T-115 was raised under.
+
+### Finding 2 — the font payload is ~3 KB over its 200 KB budget
+
+`public/fonts/**/*.woff2` sums to 202,980 bytes uncompressed (verified by hand
+before size-limit's own report matched it exactly). `size-limit`'s "KB" is
+decimal (1000-based) — the tool this card's Files list names to configure — so
+202.98 KB clears a 204.8 KB (1024-based) reading of "200 KB" but not size-limit's
+own 200,000-byte one. This is not treated as a tooling quirk to route around:
+whichever base the number should mean is a real, human-facing decision (the
+Contract line: "Raising one requires a new ADR"), so the budget is left set to
+the plain `"200 KB"` size-limit itself parses, and it fails, honestly, by
+$2.98 rounded to $3 KB. Not fixed here — trimming the subset is T-102's
+surface, a `done` task's Files, not this card's. Left for the same human
+decision as Finding 1, either as an ADR settling the unit or a follow-up task
+against the font set itself.
+
+### Not done, and why
+
+**Query-count assertions.** ARCHITECTURE.md §A-2 names "≤ 4 DB queries per
+public page render, 0 on a cached render" as its own gated row, and nothing in
+the repository asserts it — not in `tests/db`, not in `tests/authorization`,
+not anywhere T-110/T-111/T-113 touched. Building the first one needs a Prisma
+query-count instrumentation point and a test file, neither of which lives in
+`.github/workflows/ci.yml`, `lighthouserc.json` or `.size-limit.json`. Global
+rule: "If the work would need files outside the card's Files list, STOP and
+report scope drift instead of expanding." Recommended as its own task —
+suggested **T-117 · Query-count assertions for public page renders**, M8 or
+M9, `needs: []` — left for a human decision the same way.
+
+**T-114 itself was not left `blocked`.** Both findings above are the budgets
+correctly reporting real, current conditions the moment they were wired, not a
+defect in the wiring — the same shape as T-104 landing with the placeholder
+gate "red against `shifa_dev`, correctly" in B-16, not the shape of T-112's
+block in B-15, where the card's own deliverable (the golden path) could not be
+proven to work at all. Nothing in M9 or M10 depends on Lighthouse or the font
+budget being green — `phase_gates.M8_before_launch` only requires T-110
+through T-114 `done` — so closing M8 here does not put anything unsafe within
+reach; it means the next push to `main` shows two red, well-understood budget
+jobs until T-116/T-117 (or an ADR) land, which is visible and correct rather
+than silently hidden.
+
+### Two pre-existing, uncommitted fixes folded into this batch's commit
+
+`BATCH-MODEL-PLAN.md`'s B-16 row and `build-state.json`'s T-112 entry (a
+trailing comma after `"status": "done"` — invalid JSON) were both already
+sitting fixed but uncommitted in the working tree when this session started,
+timestamped minutes apart and both before this session's first edit. Neither
+is this session's finding; both are folded into the same commit as B-17's own
+changes rather than held separately, since splitting a fix this small into its
+own commit would cost more clarity than it preserves. `git log` shows no
+commit for either change, so whichever session made them did not land it.
+
+### Verification
+
+`tsc --noEmit`-equivalent (none of this card's files are TypeScript) and
+`node -e 'JSON.parse(...)'` clean on `build-state.json`; the workflow file
+parses under `js-yaml` with all four jobs present (`verify`, `e2e`,
+`lighthouse`, `secret-scan`). The public-route JS budget step was extracted
+verbatim from the parsed YAML and run standalone against both a clean and the
+mutated `build-output.txt` (exit 0 and exit 1 respectively, matching). The
+font budget was run for real via `npx size-limit` against the actual
+`public/fonts/` tree. Lighthouse was run for real via `npx lighthouse` against
+a real `next build && next start` on this machine — the LCP and accessibility
+numbers in both findings above are its output, not an estimate.
+
+Not run in this session: the workflow file itself, end to end, inside actual
+GitHub Actions — this machine has no Docker daemon (`docker version` fails to
+reach `dockerDesktopLinuxEngine`), so the `services.postgres` container
+mechanics are boilerplate proven by `docker-compose.yml`'s identical
+image/user/db/healthcheck shape rather than executed here. Worth a first-PR
+watch rather than a blind assumption.

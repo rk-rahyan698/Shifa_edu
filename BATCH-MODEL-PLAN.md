@@ -59,8 +59,8 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | **B-13** | T-110 ✅ | Authorization matrix test suite | **Opus** | High | High | ~40 cases that decide whether the permission model actually holds. A plausible-looking suite that misses a hole is worse than no suite, because it reads as proof. | **Completed** — 236 cases |
 | **B-14** | T-111 ✅ | Repository & constraint integration tests | **Sonnet** | Medium | Low | Mechanical derivation from a schema that already exists and 15 committed migrations. | **Completed** |
 | **B-15** | T-112 ✅ | E2E golden paths, both locales, mobile | **Sonnet** | Medium | Low-Medium | Fiddly but well-defined — the paths are named in the card. | **Completed** |
-| **B-16** | T-113 | Content & ethics gates | **Opus** | High | High | The last thing standing between `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, unconsented faces, and unverified statistics reaching a live school site. Leakage detection is the subtle part. | Pending |
-| **B-17** | T-114 | CI performance, bundle & a11y budgets | **Sonnet** | Medium | Low | Threshold and pipeline configuration against budgets already set in the architecture. | Pending |
+| **B-16** | T-113 ✅| Content & ethics gates | **Opus** | High | High | The last thing standing between `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, unconsented faces, and unverified statistics reaching a live school site. Leakage detection is the subtle part. | **Completed** |
+| **B-17** | T-114 ✅ | CI performance, bundle & a11y budgets | **Sonnet** | Medium | Low | Threshold and pipeline configuration against budgets already set in the architecture. | **Completed** |
 | **B-18** | T-120, T-121 | Nightly encrypted backup; retention purge | **Opus** | High | High | One job encrypts, the other **permanently deletes** — messages at 12 months, audit at 24. An off-by-one in a retention window destroys records nobody knows are gone. | Pending |
 | **B-19** | T-122, T-124 | Uptime/error/auth alerts; freshness report | **Sonnet** | Medium | Low-Medium | Integration and configuration against third-party services, with a report reading from what T-122 collects. | Pending |
 | **B-20** | T-123 | Staging & production envs, migration pipeline | **Opus** | High | High | Live infrastructure and real secrets. A migration pipeline that is wrong is discovered in production. | Pending |
@@ -99,7 +99,7 @@ exists, the contract is explicit, and verification is objective.
 - **Completed** — all tasks verified, `build-state.json` updated, awaiting or
   having received the human's single batch commit
 
-**B-1 through B-12a are complete. M4, M5, M6 and M7 are all closed.** B-12's
+**B-1 through B-17 are complete. M4 through M8 are all closed.** B-12's
 audit found the admin dashboard had been answering HTTP 500 for every admin
 since T-052 and filed the one-word correction as T-105 rather than editing the
 `done` T-052 card; B-12a landed it, re-verified live against `shifa_dev` and
@@ -173,6 +173,35 @@ the public URL and the App Router path are different strings for one locale and
 identical for the other, so `revalidatePath('/about')` silently misses while
 `revalidatePath('/en/about')` works. It is recorded as a finding rather than
 fixed, because the fix edits two `done` tasks' assertions — see PENDING-COMMIT.md.
+
+**B-16 landed T-113**, all six §A-13.3 gates green at 57 new cases (820/820
+across 48 files). Its own placeholder gate is correctly red against
+`shifa_dev` — the seed's 16 scaffold `[[CONTENT REQUIRED — DO NOT PUBLISH]]`
+titles are real rows rendering right now, and T-130 is what replaces them —
+recorded as an expected, tracked state rather than something to silence.
+
+**B-17 landed T-114 and closed M8.** The CI config itself was Sonnet's call
+made good: a Postgres service, the full placeholder env `src/lib/env.ts`
+requires, and named steps for every M8 suite (unit, `tests/db`,
+`tests/authorization`, `tests/gates`, i18n parity, Playwright e2e) now exist in
+`.github/workflows/ci.yml`, none of which ran in CI before this batch. The
+public-route JS budget was proved with a real mutation — a deliberately
+oversized import that took `/about` from 103 kB to 257 kB and failed the new
+check — then reverted, exactly the card's own Verify line.
+
+Two of the budgets it wired came back genuinely red against the site as it
+stands today, measured rather than assumed: the homepage's simulated
+mobile/slow-4G LCP is ~3.04s against the 2.5s target, and the subsetted font
+set is ~3 KB over its 200 KB total. Neither is fixable inside this card's
+three-file Files list, so both are recorded as findings needing a task id of
+their own — the same shape as T-105 and T-115 before them, and the same reason
+T-114 itself was not left `blocked`: the card's own deliverable (the CI
+wiring) is complete and correct, and a budget immediately catching a real
+regression the moment it is wired is the Contract working, not the card
+failing. A sixth item, query-count assertions, has no test anywhere in the
+repo to wire — building one needs source outside `.github/workflows/ci.yml`,
+`lighthouserc.json` and `.size-limit.json`, so it is deferred the same way.
+Full evidence in SESSION-LOG.md.
 
 ### Two findings from B-1 that change how later batches should be run
 

@@ -9,8 +9,8 @@
     "awaiting_human": "Work an AI may not complete. Only a human may move this to `done`. Treated as NOT satisfying a dependency.",
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
-  "updated_at": "2026-08-19",
-  "updated_by": "T-113",
+  "updated_at": "2026-08-20",
+  "updated_by": "T-114",
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -119,7 +119,7 @@
     }
   },
   "progress": {
-    "done": 71,
+    "done": 72,
     "total": 80
   },
   "milestones": [
@@ -175,7 +175,7 @@
       "id": "M8",
       "title": "Verification",
       "tasks": "T-110..T-114",
-      "done": false
+      "done": true
     },
     {
       "id": "M9",
@@ -1100,7 +1100,7 @@
         "T-088",
         "T-066"
       ],
-      "status": "done",
+      "status": "done"
     },
     {
       "id": "T-115",
@@ -1130,7 +1130,8 @@
         "T-104",
         "T-005"
       ],
-      "status": "todo"
+      "status": "done",
+      "note": "Lighthouse (LCP/CLS + accessibility-category axe gate), the public-route JS budget and the font-payload budget are wired into .github/workflows/ci.yml, plus a Postgres service and env.ts's full placeholder env so the build, tests/db, tests/authorization, tests/gates and tests/e2e all run in CI for the first time. Two of the Do list's six items landed genuinely red against current reality, verified rather than assumed, and are recorded as findings rather than papered over: (1) homepage LCP measures ~3.04s simulated mobile/slow-4G against the 2.5s target — render-blocking-insight attributes the loss mainly to one render-blocking stylesheet; (2) public/fonts/**/*.woff2 totals ~202.98 KB against the 200KB target, ~3KB over. Both need a task id outside this card's Files list (.github/workflows/ci.yml, lighthouserc.json, .size-limit.json) to fix or to carry a new ADR raising the number. A sixth Do-list item, query-count assertions, has no existing test anywhere in the repo to wire — building one needs application/test source outside this card's Files line, so it is deferred to a new task the same way T-113 deferred this card's own CI wiring. See SESSION-LOG.md for full evidence, including the mutation test (a deliberately oversized import) the public-route JS budget was proved against before landing."
     },
     {
       "id": "T-120",

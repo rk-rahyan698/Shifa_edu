@@ -293,12 +293,19 @@ async function buildFreshnessSignals(
   }
 
   if (allowed.has("oldUnreadMessages")) {
+    // T-105: was `created_at`, a column `contact_messages` does not have — its
+    // timestamp is `submitted_at` (T-020). `count(*)` fails at parse time
+    // regardless of row count, so this made `/admin` a 500 for every
+    // authenticated admin since T-052. Found and root-caused by T-104's axe
+    // audit, which also confirmed the corrected query leaves the whole panel
+    // free of violations at any severity — see SESSION-LOG.md and
+    // PENDING-COMMIT.md under B-12.
     const count = scalar(
       await prisma.$queryRaw<{ n: bigint }[]>`
         SELECT count(*) AS n FROM contact_messages
          WHERE deleted_at IS NULL
            AND read_at IS NULL
-           AND created_at < now() - make_interval(days => ${UNREAD_MESSAGE_DAYS}::int)`,
+           AND submitted_at < now() - make_interval(days => ${UNREAD_MESSAGE_DAYS}::int)`,
     );
 
     signals.push({

@@ -2499,3 +2499,56 @@ sweep belongs to T-112's Playwright suite.
 tracked file named `on` at the repo root; `jsx: preserve` still means no `.tsx`
 file is unit-testable, which is why every assertion in this batch came from a
 browser rather than from Vitest.
+
+---
+
+## 2026-08-19 — B-12a: T-105
+
+**by:** T-105 · **next:** B-13 (T-110 authorization matrix suite, ~40 cases)
+
+The one-identifier fix T-104's audit found and left unapplied. `progress.done`
+is 66 / 79. **M7 is now closed** — T-100 through T-105 are all `done`.
+
+### The fix
+
+`src/app/(admin)/admin/page.tsx`, the unread-messages dashboard signal:
+
+```diff
+- AND created_at   < now() - make_interval(days => ${UNREAD_MESSAGE_DAYS}::int)
++ AND submitted_at < now() - make_interval(days => ${UNREAD_MESSAGE_DAYS}::int)
+```
+
+`contact_messages` has no `created_at` column — its timestamp is `submitted_at`
+(T-020) — so `count(*)` failed at parse time on every request, and `/admin` has
+answered HTTP 500 for every authenticated admin since T-052. A comment was added
+at the site naming T-105, T-052, and where the fuller account lives.
+
+T-052 stays `done`, not `superseded`: its Do list is otherwise satisfied in
+full, and superseding it over one identifier would reopen M4 to correct a typo.
+
+### Verification — live, not asserted
+
+B-12's session proved this sufficient by applying it locally and reverting; this
+session is the actual fix landing, so it was re-proven from scratch rather than
+trusted from memory:
+
+- The corrected raw SQL run directly against `shifa_dev`: returns `{n: 0}`,
+  no error.
+- `next build` clean from an empty `.next`.
+- `next start`, logged in as `superadmin` over `/api/auth/login`, `/admin`
+  fetched with the session cookie: **HTTP 200**, `<title>অ্যাডমিন প্যানেল ·
+  শিফা ইন্টারন্যাশনাল স্কুল</title>`, `<html lang="bn">`, and the dashboard's
+  own grid markup present in the body — not an error boundary's fallback.
+- **T-104's axe harness re-run against all 58 route-locale combinations,
+  post-fix: zero violations, at any severity, on every route in both
+  locales.** The admin panel's four remaining violations from B-12 — all
+  artifacts of the 500 page — are gone with it.
+- `tsc --noEmit`, `eslint .`, `prettier --check` on the changed file: clean.
+- `vitest run`: **462 / 462**, unchanged.
+
+### Not done
+
+Nothing deferred. This was a one-line card with a note instead of a
+BUILD-TRACKER.md entry — `build-state.json`'s `note` field on T-105 was the
+spec, per B-10's precedent for a finding that gets its own id rather than a
+formal card.

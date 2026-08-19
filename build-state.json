@@ -10,7 +10,7 @@
     "superseded": "Replaced by a later task id. Never selected. Its output is not edited."
   },
   "updated_at": "2026-08-19",
-  "updated_by": "T-104",
+  "updated_by": "T-105",
   "read_order_for_ai": [
     "1. Read build-state.json only. Do not read SESSION-LOG.md or ARCHITECTURE.md yet.",
     "2. Check blocked_on. If non-empty, STOP and report to the user.",
@@ -119,7 +119,7 @@
     }
   },
   "progress": {
-    "done": 65,
+    "done": 66,
     "total": 79
   },
   "milestones": [
@@ -169,7 +169,7 @@
       "id": "M7",
       "title": "SEO, perf, a11y",
       "tasks": "T-100..T-105",
-      "done": false
+      "done": true
     },
     {
       "id": "M8",
@@ -994,8 +994,8 @@
       "needs": [
         "T-104"
       ],
-      "status": "todo",
-      "note": "Found by T-104's audit. src/app/(admin)/admin/page.tsx line 301 filters contact_messages on `created_at`; that column does not exist (the table's timestamp is `submitted_at`), so /admin answers 500 for every authenticated admin and has since T-052 — which B-1 built and verified with no database on the machine. One identifier. T-052 is NOT superseded: its card's Do list is otherwise satisfied and superseding it would reopen M4 for a typo. T-104 verified that with this line corrected the whole admin panel is axe-clean at every severity, so this is the only thing between the build and a fully clean audit."
+      "status": "done",
+      "note": "Found by T-104's audit. src/app/(admin)/admin/page.tsx line 301 filters contact_messages on `created_at`; that column does not exist (the table's timestamp is `submitted_at`), so /admin answers 500 for every authenticated admin and has since T-052 — which B-1 built and verified with no database on the machine. One identifier. T-052 is NOT superseded: its card's Do list is otherwise satisfied and superseding it would reopen M4 for a typo. Fixed in B-12a: `created_at` -> `submitted_at` on that one line. Verified live against shifa_dev (query runs, /admin 200 with session cookie, dashboard grid renders) and by re-running T-104's axe harness across all 58 route-locale combinations post-fix: zero violations at any severity, site-wide."
     },
     {
       "id": "T-110",

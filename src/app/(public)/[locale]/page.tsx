@@ -110,6 +110,30 @@ export default async function HomePage({
         dangerouslySetInnerHTML={{ __html: jsonLdScript(organization) }}
       />
 
+      {/*
+        The page's `<h1>`, visually hidden (T-104).
+
+        Every other public page opens with a visible `<h1>`; this one opened
+        with the hero and then a run of `<h2>`s, so the document had no level-1
+        heading at all — axe `page-has-heading-one`, and for a screen-reader
+        user the "jump to first heading" gesture landed mid-page.
+
+        It is `sr-only` rather than drawn because the hero *is* the visual
+        heading, and design-system.md §6 wants that photograph to lead. It is
+        not the hero's own text: a slide title changes every five seconds and
+        there are zero slides before the school loads any, which would leave the
+        page with no `<h1>` again in exactly the state it ships in.
+
+        The name comes from the JSON-LD node already read above rather than a
+        second branding query, and falls back to the nav's own "Home" label if
+        the school has not entered one yet.
+      */}
+      <h1 className="sr-only">
+        {typeof organization["name"] === "string" && organization["name"] !== ""
+          ? organization["name"]
+          : t(locale, "common.nav.home")}
+      </h1>
+
       <HeroSlider
         slides={hero}
         previousLabel={t(locale, "common.actions.previous")}

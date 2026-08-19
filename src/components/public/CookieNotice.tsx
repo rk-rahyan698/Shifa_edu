@@ -92,7 +92,12 @@ export function CookieNotice({ locale }: { locale: Locale }) {
         container: four columns of Bangla will not fit 360px, and a page that
         scrolls sideways as a whole is the §A-8.3 failure this avoids.
       */}
-      <div className="mt-6 overflow-x-auto">
+      {/* Focusable for the same reason the privacy page's inventory table is
+          (T-104): a container that scrolls but cannot be focused is unreachable
+          by keyboard, since there is no scrollbar to drag. No `role="region"`
+          here either — see the note on that table for why a second landmark
+          with the section's own name is worse than none. */}
+      <div className="mt-6 overflow-x-auto" tabIndex={0}>
         <table className="w-full min-w-[34rem] border-collapse text-left">
           <caption className="sr-only">{copy.heading}</caption>
           <thead>

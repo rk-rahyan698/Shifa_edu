@@ -155,6 +155,7 @@ export function UiKitDemo() {
             search: "Search",
             noResults: "No results",
             rowsPerPage: "Rows per page",
+            rowActions: "Actions",
             pageOf: "Page {page} of {total}",
             previous: "Previous",
             next: "Next",

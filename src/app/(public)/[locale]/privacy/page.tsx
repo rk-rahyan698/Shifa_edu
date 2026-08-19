@@ -288,8 +288,21 @@ export default async function PrivacyPage({
         <p>{copy.inventoryIntro}</p>
         {/* Five columns of Bangla do not fit a 360px viewport, so the table
             scrolls inside its own box rather than pushing the page sideways
-            (§A-8.3). */}
-        <div className="mt-6 overflow-x-auto">
+            (§A-8.3).
+
+            `tabIndex={0}` is what makes that box reachable without a mouse
+            (T-104, axe `scrollable-region-focusable`): a keyboard user cannot
+            drag a scrollbar, so a scrollable container that is not itself
+            focusable hides whatever overflows it. Focusing it makes the arrow
+            keys scroll it.
+
+            Deliberately *not* `role="region"`. That was tried and it traded one
+            violation for another: the enclosing `<section>` is already a
+            landmark named by this heading, so a nested region carrying the same
+            name gave two indistinguishable landmarks (axe `landmark-unique`).
+            The table's own `<caption>` names the content for a screen reader,
+            which is what the region role would have been for. */}
+        <div className="mt-6 overflow-x-auto" tabIndex={0}>
           <table className="w-full min-w-[48rem] border-collapse text-left">
             <caption className="sr-only">{copy.inventoryHeading}</caption>
             <thead>

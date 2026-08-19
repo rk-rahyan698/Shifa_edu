@@ -34,17 +34,32 @@
  * Approved as `open_decisions_required_before.ADR-005_route_shape` in
  * build-state.json; the card carries it on its **Route shape** line.
  *
+ * ## The document language (T-104)
+ *
+ * **This file is a root layout.** It renders `<html>` and `<body>` itself, and
+ * `<html lang>` is the request's locale.
+ *
+ * It did not used to be. A single `src/app/layout.tsx` sat above this segment
+ * with `lang="bn"` hardcoded, because a root layout cannot read a dynamic
+ * segment below it — so every English page declared itself Bangla, and this
+ * layout compensated by putting `lang`/`dir` on an inner `<div>`. That satisfies
+ * WCAG 3.1.2 (Language of Parts) but never 3.1.1 (Language of Page): the
+ * document's own declared language stayed wrong, which is what a screen reader
+ * picks its voice from before it reaches any wrapper. T-080 recorded it, T-100
+ * was asked to fix it and could not, and PENDING-COMMIT.md routed it here.
+ *
+ * The fix is Next's documented one for exactly this case: **multiple root
+ * layouts**. `src/app/layout.tsx` is gone, and each top-level route group owns
+ * its own document — this one for the public site, `(auth)` for login and
+ * password reset, `(admin)` for the panel. No URL changed: `(public)`,
+ * `(auth)` and `(admin)` are route groups and contribute no path segment.
+ * `unstable_rootParams()` would also have worked and is a fraction of the diff,
+ * but it is deprecated on arrival in 15.5 and warns on every build, which is a
+ * poor thing to hand a school to maintain.
+ *
  * ## What this layout does not do
  *
- * It does not set `<html lang>`. `src/app/layout.tsx` is the root layout and sits
- * *above* the locale segment, so it cannot see the locale, and it is not in this
- * card's Files list. The public subtree therefore declares its language on its own
- * wrapper element, which is where a screen reader reads it from anyway, and
- * restores the correct body type scale explicitly (see `bodyTypeClass`). The
- * document-level attribute wants fixing where `hreflang` and the rest of the head
- * are decided — flagged for T-100 in PENDING-COMMIT.md.
- *
- * It also does not call `generateStaticParams`. The required segment makes it
+ * It does not call `generateStaticParams`. The required segment makes it
  * usable again — the catch-all rejected the empty-prefix entry an unprefixed
  * locale needs (`Requested and resolved page mismatch: //notices /notices`),
  * which the `[locale]` shape never has to express — but §A-11's per-locale static
@@ -53,7 +68,12 @@
  * per request once warm.
  */
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+
+// Every root layout imports the stylesheet; there is no shared parent left to
+// do it once (see "The document language" above).
+import "@/app/globals.css";
 
 import {
   Footer,
@@ -89,6 +109,30 @@ const NAV: readonly {
   { key: "contact", path: "/contact", labelKey: "common.nav.contact" },
 ] as const;
 
+/**
+ * The public site's default document title (T-104).
+ *
+ * Every real page sets its own through `pageMetadata` (T-100) and overrides
+ * this. It exists for the pages that do not: `not-found.tsx` renders without a
+ * matched route's metadata, and before T-104 the whole application leaned on a
+ * single hardcoded title in `src/app/layout.tsx`, which this file's deletion
+ * removed. Without a default, those documents ship with no `<title>` at all —
+ * a WCAG 2.4.2 failure and axe `document-title`.
+ *
+ * `readShell` is the same cached read the layout below already performs, so
+ * this costs no additional query.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale: segment } = await params;
+  if (!isLocale(segment)) return {};
+  const shell = await readShell(segment);
+  return { title: shell.schoolName };
+}
+
 export default async function PublicLayout({
   children,
   params,
@@ -115,66 +159,69 @@ export default async function PublicLayout({
 
   return (
     /*
-      `lang` and `dir` on the wrapper, per the note above. The type-scale class
-      goes with them: `globals.css` sets Bangla's 17px/1.75 floor through
-      `html:lang(bn)`, and while the root layout hardcodes `lang="bn"` that
-      selector matches on English pages too. Naming the scale here is what keeps
-      English at its own 16px/1.6 metrics (design-system.md §3.4).
+      `lang` and `dir` sit on `<html>` itself (T-104). This layout is a **root
+      layout** — see the "The document language" note in the header — so the
+      locale that governs the whole document is finally the locale the document
+      is actually written in, rather than a hardcoded `bn` with a corrected
+      wrapper underneath it.
+
+      The type-scale class stays explicit: `globals.css` sets Bangla's
+      17px/1.75 floor through `html:lang(bn)`, which now matches only on
+      genuinely Bangla documents, and naming the scale keeps English at its own
+      16px/1.6 metrics (design-system.md §3.4).
     */
-    <div
-      lang={locale}
-      dir={directionForLocale(locale)}
-      className={`flex min-h-screen flex-col bg-surface ${bodyTypeClass(locale)}`}
-    >
-      {/*
+    <html lang={locale} dir={directionForLocale(locale)}>
+      <body className={`flex min-h-screen flex-col bg-surface ${bodyTypeClass(locale)}`}>
+        {/*
         Skip link. Visible only on focus, and first in the tab order — the header
         holds eight nav links plus a switcher, and a keyboard or screen-reader user
         should not have to walk them on every page (design-system.md §9).
       */}
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-btn focus:bg-primary focus:px-4 focus:py-2 focus:text-surface"
-      >
-        {t(locale, "common.ui.skipToContent")}
-      </a>
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-btn focus:bg-primary focus:px-4 focus:py-2 focus:text-surface"
+        >
+          {t(locale, "common.ui.skipToContent")}
+        </a>
 
-      <Header
-        schoolName={shell.schoolName}
-        slogan={shell.slogan}
-        homeHref={localizePath("/", locale)}
-        items={navItems}
-        // Unprefixed on purpose — see `HeaderProps.login`.
-        login={{ href: "/login", label: t(locale, "admin.auth.signIn") }}
-        language={{
-          labels: {
-            bn: t(locale, "common.language.bn"),
-            en: t(locale, "common.language.en"),
-          },
-          groupLabel: t(locale, "common.language.switch"),
-        }}
-        navLabel={t(locale, "public.home.quickLinks")}
-        openMenuLabel={t(locale, "common.ui.openMenu")}
-        closeMenuLabel={t(locale, "common.ui.closeMenu")}
-      />
+        <Header
+          schoolName={shell.schoolName}
+          slogan={shell.slogan}
+          homeHref={localizePath("/", locale)}
+          items={navItems}
+          // Unprefixed on purpose — see `HeaderProps.login`.
+          login={{ href: "/login", label: t(locale, "admin.auth.signIn") }}
+          language={{
+            labels: {
+              bn: t(locale, "common.language.bn"),
+              en: t(locale, "common.language.en"),
+            },
+            groupLabel: t(locale, "common.language.switch"),
+          }}
+          navLabel={t(locale, "public.home.quickLinks")}
+          openMenuLabel={t(locale, "common.ui.openMenu")}
+          closeMenuLabel={t(locale, "common.ui.closeMenu")}
+        />
 
-      {/* `flex-1` so a short page still pushes the footer to the bottom rather
+        {/* `flex-1` so a short page still pushes the footer to the bottom rather
           than leaving a band of background under it. */}
-      <main id="main" className="flex-1">
-        {children}
-      </main>
+        <main id="main" className="flex-1">
+          {children}
+        </main>
 
-      <Footer
-        locale={locale}
-        schoolName={shell.schoolName}
-        slogan={shell.slogan}
-        address={shell.address}
-        officeHours={shell.officeHours}
-        footerNote={shell.footerNote}
-        navItems={navItems}
-        channels={shell.channels}
-        socials={shell.socials}
-      />
-    </div>
+        <Footer
+          locale={locale}
+          schoolName={shell.schoolName}
+          slogan={shell.slogan}
+          address={shell.address}
+          officeHours={shell.officeHours}
+          footerNote={shell.footerNote}
+          navItems={navItems}
+          channels={shell.channels}
+          socials={shell.socials}
+        />
+      </body>
+    </html>
   );
 }
 

@@ -241,13 +241,27 @@
     @apply pointer-events-none opacity-60;
   }
 
-  /* --- Links (§5) --------------------------------------------------------- */
+  /* --- Links (§5) ---------------------------------------------------------
+     Underlined at rest, not only on hover (T-104).
+
+     §5 says "Text link: Uniform Teal, underline on hover", and taken literally
+     that leaves colour as the only thing marking a link inside a paragraph.
+     Teal `#3A7A72` against Slate Gray body text `#5B6470` measures **1.2:1**
+     — axe flags it as `link-in-text-block`, and it is a WCAG 1.4.1 (Use of
+     Colour) failure: 3:1 against the surrounding text is the bar for colour
+     alone to carry the distinction, and no pair from the §10 palette that is
+     also readable on white clears it.
+
+     §9 already settles the conflict — "Always pair color with an icon,
+     underline, or label ... never rely on color alone" — so the underline
+     becomes permanent and hover keeps its colour shift as the secondary cue.
+     Both links stay Uniform Teal, which is 4.99:1 on white and unchanged. */
   .link {
-    @apply text-teal underline-offset-2 no-underline transition-colors;
+    @apply text-teal underline underline-offset-2 transition-colors;
   }
 
   .link:hover {
-    @apply underline;
+    @apply text-primary-hover;
   }
 
   /* Gold at body size is 3.36:1 on green and fails; the tint is 7.83:1 (§9). */

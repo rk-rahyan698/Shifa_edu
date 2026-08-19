@@ -34,6 +34,15 @@ import Link from "next/link";
 import { t } from "@/lib/i18n";
 import { LOCALES, directionForLocale, localizePath } from "@/lib/locale";
 
+/*
+ * No `metadata` export here, and not for lack of trying (T-104). Next does not
+ * read one from `not-found.tsx` — the title comes from whichever route actually
+ * matched, which for an unmatched URL is the catch-all beside this file. The
+ * bilingual "page not found" title therefore lives in
+ * `[...notFound]/page.tsx`'s `generateMetadata`, and the layout carries a
+ * default for every other way this file can be reached.
+ */
+
 export default function PublicNotFound() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 text-center sm:px-6 lg:py-24">

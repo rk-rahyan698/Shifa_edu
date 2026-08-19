@@ -50,7 +50,29 @@
  * a task id. Written up in PENDING-COMMIT.md.
  */
 
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+
+/**
+ * The 404's document title (T-104).
+ *
+ * It lives here rather than in `not-found.tsx` because Next takes a document's
+ * title from the route that *matched*, and for an unmatched URL that is this
+ * catch-all — a `metadata` export on `not-found.tsx` is simply not read. Until
+ * T-104 the title came from the deleted `src/app/layout.tsx` and read "Shifa
+ * International School", which tells a reader with several tabs open that they
+ * arrived somewhere fine. They did not.
+ *
+ * Both languages appear in the one string for the same reason `not-found.tsx`
+ * renders both: `params` here is the *unmatched* path, not a locale, and a
+ * mistyped URL carries no reliable signal about which language its reader
+ * wanted. Returning metadata does not disturb the `notFound()` below — the
+ * component still throws, and the status-code defect documented above is
+ * unchanged either way.
+ */
+export function generateMetadata(): Metadata {
+  return { title: "পৃষ্ঠাটি পাওয়া যায়নি · Page not found" };
+}
 
 export default function CatchAllNotFound(): never {
   notFound();

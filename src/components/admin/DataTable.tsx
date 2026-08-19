@@ -67,6 +67,20 @@ export type DataTableLabels = {
   pageOf: string;
   previous: string;
   next: string;
+  /**
+   * `admin.table.actions` — names the row-actions column for a screen reader
+   * (T-104, axe `empty-table-header`).
+   *
+   * The column shows buttons and needs no visible heading, but an empty `<th>`
+   * is not the way to say so: a screen reader announces each action cell by its
+   * column header, so an empty one announces nothing and the reader is left
+   * with a button whose column has no name. The text is rendered `sr-only`, so
+   * the table looks exactly as it did.
+   *
+   * Required rather than optional on purpose — a new list that forgets it
+   * should be a compile error, not a silent regression of this fix.
+   */
+  rowActions: string;
 };
 
 export type DataTableProps<Row> = {
@@ -224,7 +238,11 @@ export function DataTable<Row>({
                   </th>
                 );
               })}
-              {rowActions !== undefined && <th scope="col" className="px-4 py-3" />}
+              {rowActions !== undefined && (
+                <th scope="col" className="px-4 py-3">
+                  <span className="sr-only">{labels.rowActions}</span>
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>

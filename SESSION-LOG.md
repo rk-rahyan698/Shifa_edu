@@ -2701,3 +2701,106 @@ today because `vitest.config.ts` globs `tests/**` and `ci.yml` runs `npm test` �
 both now asserted — but that flag means a CI run that somehow collected nothing
 would still be green. Outside this card's Files list; worth an id whenever
 T-114 touches the pipeline.
+
+---
+
+## 2026-08-19 — B-14: T-111
+
+**by:** T-111 · **next:** B-15 (T-112 E2E golden paths, both locales, mobile)
+
+Repository & constraint integration tests over `tests/db/**` — a shared
+`harness.ts` plus ten spec files, one per Do-list item: singleton guards,
+`ck_stat_verified` (with the five sibling date-range CHECKs it shares a shape
+with), the four consent CHECKs, RESTRICT refusals, soft delete + restore,
+`purge_after`'s GENERATED column, audit append-only, seed idempotency, locale
+fallback queries, and the four "exactly one current/default" partial unique
+indexes. `progress.done` is 68 / 79.
+
+### The one primitive nearly everything is built on
+
+`withRollbackTx` runs a test's body inside a Prisma interactive transaction
+and unconditionally rolls it back by throwing a private sentinel afterward —
+whether the statement under test was refused (leaving the underlying Postgres
+transaction aborted, which ROLLBACK is the only valid recovery from anyway) or
+accepted (the "clear consent AND unpublish in the same statement succeeds"
+cases, which need the write to actually happen so a follow-up `SELECT` can
+prove it). Every test in this directory is therefore a no-op against the
+database once it returns, and no T-110-style `cleanup()` sweep is needed. The
+one deliberate exception is `seed-idempotency.test.ts`, which runs the real
+seed script as an uncontrolled subprocess — idempotent by its own contract,
+so re-running it twice **is** the test, not a side effect to undo.
+
+### Two things learned empirically, not assumed
+
+**`ON DELETE RESTRICT` carries SQLSTATE `23001`, not the commonly quoted
+`23503`.** `23503` (foreign_key_violation) is what an INSERT/UPDATE gets for
+pointing at a row that doesn't exist; a RESTRICT refusal on DELETE has its own,
+more specific code (`23001`, restrict_violation). Confirmed by provoking one
+directly before writing the assertion, rather than guessing from the SQLSTATE
+class name. `harness.ts`'s `SQLSTATE` map documents the split.
+
+**Prisma's raw-query error wrapping drops the constraint name for a
+unique_violation.** For a CHECK or FK violation, `meta.message` carries
+Postgres's full `ERROR: … constraint "name"` line. For `23505` it carries only
+the `DETAIL` line ("Key (col)=(val) already exists") — confirmed against this
+Prisma version (6.19.3) by provoking each error class and inspecting the full
+error object before trusting either shape. Every unique-violation case
+(`one-current.test.ts`, two cases in `soft-delete-restore.test.ts`) therefore
+asserts the SQLSTATE plus a direct `pg_indexes` lookup of the responsible
+index's `indexdef` — arguably a stronger proof than a string match would have
+been, since it pins the exact columns and `WHERE` clause rather than a
+substring that happens to appear.
+
+### A concurrency bug caught by running the full suite, not just this directory
+
+`seed-idempotency.test.ts` first compared bare `count(*)` before and after a
+second seed run. Standalone it passed; inside `npm test` (all 41 files, run
+concurrently) it failed — `class_grades` read 15 the second time, `designations`
+7, `gallery_categories` 8. Not a seed defect: other files in this same session
+running concurrently (e.g. `restrict-refusals.test.ts`) hold rows with
+tagged, seed-unrelated codes open inside their own transactions at that
+instant, and a bare `count(*)` has no way to tell those apart from what
+`prisma/seed.ts` itself inserted. Rewritten to filter every count to the exact
+codes `seed.ts`'s own functions insert (`code = ANY(seed's own list)`), which
+is both the correct fix and, on reflection, the more precise test of AUDIT
+D-3's actual claim — a real deployed database will hold admin-added
+designations and categories beyond the seed's own vocabulary, and a bare
+table count was never quite testing the right thing even outside this
+session's concurrency.
+
+### Scope decisions, stated rather than silently made
+
+**RESTRICT is tested on six representative FKs, not all ~25 in Part B**
+(`faculty`, `notices`, `gallery_albums`, `gallery_photos`, `fee_items`,
+`class_sections`), plus one deliberate SET NULL contrast. Same call §B-15's
+own normalization proof makes for itself ("representative cases… the pattern
+generalizes") — every RESTRICT FK is the same shape, same SQLSTATE, same
+cause, and `restrict-refusals.test.ts`'s header says so explicitly rather than
+leaving the gap to be discovered.
+
+**`countSeedRows()` skips `module_actions`.** Its uniqueness is a composite
+(module, action) pair keyed off `seedAuthorizationVocabulary`'s per-module
+`applicable` map — expressible, but the other nine natural-keyed tables
+already prove the DO NOTHING pattern holds, and this one adds SQL complexity
+without adding a new failure mode to catch.
+
+### Verification
+
+`tsc --noEmit`, `eslint tests/db` clean (one unused import found and removed
+along the way). **63 / 63 new tests**, run three ways: each file standalone,
+`tests/db` together, and inside the full `npm test` (761 tests, 41 files) —
+the third run is what caught the concurrency bug above. The only two failures
+anywhere in the full suite are pre-existing and untouched by this session:
+`src/lib/cache.isr.test.ts`'s two build-output assertions, which need a fresh
+`next build` artifact this environment doesn't have queued.
+
+A direct post-suite query confirmed zero residue: `designations` back to 4,
+`class_grades` to 14, `notice_categories` to 6, `gallery_categories` to 4,
+`fee_types` to 5, `users` to 1, and zero `pg_roles` rows matching this suite's
+probe-role prefix — the ephemeral non-superuser roles `audit-append-only.test.ts`
+creates to prove the REVOKE really do vanish on rollback.
+
+### Not done
+
+Nothing deferred to a new task id. M8's phase gate (`build-state.json`) still
+holds M9 and M10 shut until T-112 through T-114 land alongside this.

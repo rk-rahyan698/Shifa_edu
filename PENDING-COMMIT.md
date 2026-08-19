@@ -1,132 +1,122 @@
-# Pending commit — batch B-13 (complete)
+# Pending commit — batch B-14 (complete)
 
-**B-13 is done.** T-110 is `done`, `blocked_on` is empty, `progress.done` is
-**67 / 79**.
+**B-14 is done.** T-111 is `done`, `blocked_on` is empty, `progress.done` is
+**68 / 79**.
 
-The next batch is **B-14** (T-111, repository & constraint integration tests),
-Sonnet, solo. M8's phase gate still holds M9 and M10 shut until T-111 through
+The next batch is **B-15** (T-112, E2E golden paths, both locales, mobile),
+Sonnet, solo. M8's phase gate still holds M9 and M10 shut until T-112 through
 T-114 are all done.
 
 Nothing has been committed. **Two commits**, in this order:
 
 ```sh
-git add tests
-git commit -m "T-110: Authorization matrix test suite (~40 cases)"
+git add tests/db
+git commit -m "T-111: Repository & constraint integration tests"
 
 git add build-state.json SESSION-LOG.md PENDING-COMMIT.md BATCH-MODEL-PLAN.md
-git commit -m "B-13: batch state and session log"
+git commit -m "B-14: batch state and session log"
 ```
 
-`tests/` is a new top-level directory and the card's Files line
-(`tests/authorization/**`) is the whole of the first commit — no `src` file was
-touched. `build-state.json` was edited surgically: 3 insertions, 3 deletions.
+`tests/db/` is a new top-level directory and the card's Files line
+(`tests/db/**`) is the whole of the first commit — no `src` file was touched.
+`build-state.json` was edited surgically: 3 insertions, 3 deletions
+(`updated_by`, `progress.done`, T-111's `status`).
 
-Do **not** run `npm run format`. The same 24 pre-existing files fail
-`format:check`; this batch's own files are clean.
+Do **not** run `npm run format`. The same pre-existing files that failed
+`format:check` in B-13 still do; this batch's own files are clean.
 
 ---
 
 ## What the suite is
 
-`tests/authorization/` — one harness and four specs, **236 cases**, all green.
-The repo total goes from 462 to **698 tests in 31 files**.
+`tests/db/` — one harness (`harness.ts`) and ten spec files, **63 cases**, all
+green. The repo total goes from 698 to **761 tests in 41 files** (one file,
+`src/lib/cache.isr.test.ts`, carries two pre-existing failures untouched by
+this session — see Verification below).
 
 | File | Cases | What it holds |
 |---|---|---|
-| `matrix.test.ts` | 22 | §A-13.2's ten rows, one `describe` each, in order |
-| `every-endpoint.test.ts` | 192 | the two universal rows × **every** exported Server Action |
-| `pipeline.test.ts` | 14 | every action routes through `mutate()`; the suite's own Contract |
-| `isolation.test.ts` | 8 | the static import test; `faculty_private` unreachable publicly |
+| `singletons.test.ts` | 10 | the five `id = 1` tables' CHECK, plus their seeded row |
+| `consent.test.ts` | 12 | the four consent CHECKs — INSERT-violates, clear-alone-refused, clear-and-unpublish-accepted |
+| `stats-and-ranges.test.ts` | 9 | `ck_stat_verified` (3 cases) + six date-range CHECKs |
+| `one-current.test.ts` | 4 | the four "exactly one current/default" partial unique indexes |
+| `restrict-refusals.test.ts` | 7 | six representative RESTRICT FKs + one SET NULL contrast |
+| `soft-delete-restore.test.ts` | 4 | `users.username` reuse-after-delete, and restore-collision |
+| `purge-after.test.ts` | 5 | GENERATED column write refusal, correct value, the Dhaka/UTC boundary case, the non-partial index |
+| `audit-append-only.test.ts` | 5 | the REVOKE, proved behaviourally via an ephemeral non-superuser role, plus ADR-011's SET NULL |
+| `seed-idempotency.test.ts` | 2 | the real seed script, run twice as a subprocess |
+| `locale-fallback.test.ts` | 5 | a real `*_translations` join fed into the actual `resolveTranslation()` |
 
-**The sweep is the part worth knowing about.** §A-13.2 says "for every mutating
-endpoint" and lists ten rows; taken literally that is either ten cases against
-one endpoint or ninety-odd hand-written fixtures. `mutate()` runs authenticate →
-authorize → validate, so an unauthenticated caller is refused before its payload
-is parsed — which means one empty object tests the authorization boundary of an
-endpoint whose schema the test never needs to know. All 93 exported actions are
-enumerated by import and swept. **A new endpoint is covered the moment it is
-exported.**
+**The primitive nearly everything is built on.** `withRollbackTx` runs a test
+inside a Postgres transaction that always rolls back — whether the statement
+under test was refused or accepted — so no T-110-style `cleanup()` sweep is
+needed anywhere in this directory. `seed-idempotency.test.ts` is the one
+deliberate exception: it runs the real seed script as an uncontrolled
+subprocess, idempotent by its own contract, so re-running it twice **is** the
+test.
 
-## The Verify, run as an experiment
+## Two things learned empirically, not assumed
 
-"Deliberately removing one permission check makes the suite fail" — eight
-sabotages, each applied, measured, and reverted:
+**`ON DELETE RESTRICT` carries SQLSTATE `23001`, not `23503`.** `23503`
+(foreign_key_violation) is what an INSERT/UPDATE gets for pointing at a row
+that doesn't exist; a RESTRICT refusal on DELETE has its own code
+(`23001`, restrict_violation) — confirmed by provoking one directly rather
+than guessing from the SQLSTATE class name.
 
-| Sabotage | Result |
-|---|---|
-| `can()` module permission check → `return true` | **86 failed** |
-| `can()` suspension check removed | **2 failed** |
-| `hasSpecialGrant()` → `return true` | **1 failed** |
-| …plus the in-transaction grant check | **2 failed** |
-| users `requireSuperAdmin` removed | **1 failed** |
-| …plus `can()` applicability **and** the in-transaction check | **105 failed** |
-| `mutate()`'s whole `authorize` stage removed | **88 failed** |
-| in-transaction re-authorization removed | **1 failed** |
+**Prisma's raw-query error wrapping drops the constraint name for a
+`23505` unique_violation.** A CHECK or FK violation's `meta.message` carries
+Postgres's full `ERROR: … constraint "name"` line; a unique_violation's
+carries only the `DETAIL` line. Confirmed against this Prisma version
+(6.19.3) by inspecting the full error object for each SQLSTATE before
+trusting any of them. Every unique-violation case therefore asserts the
+SQLSTATE plus a direct `pg_indexes` lookup of the responsible index's
+`indexdef`, which is arguably the stronger proof anyway.
 
-**Two of these were green on the first attempt, and that turned out to be the
-most useful thing the exercise produced.** Blanking `hasSpecialGrant` does not
-unlock branding, because `assertStillAuthorized` re-reads
-`user_special_grants` *inside the write transaction*. Removing the `users`
-module's own super-admin guard changes nothing, because `can()` already refuses
-an action `users` never declares and the in-transaction check finds no row —
-three independent layers, exactly as that module's header claims.
+## A concurrency bug caught by running the full suite, not just this directory
 
-That redundancy cannot be seen by behavioural tests by construction: a layer you
-can delete without changing any outcome is a layer no black-box assertion
-notices. So it is asserted structurally instead, including that **both**
-implementations check suspension before the super-admin bypass — the one
-ordering two copies of the same rule could silently disagree about. After that
-pass every sabotage is caught.
+`seed-idempotency.test.ts` first compared bare `count(*)` before and after a
+second seed run. Standalone it passed; inside `npm test` (42 files, run
+concurrently) it failed — other files' own transactions were holding
+tagged, seed-unrelated rows open in `designations`, `class_grades` and
+`gallery_categories` at the instant the count ran, and a bare `count(*)` had
+no way to tell those apart from what `prisma/seed.ts` itself inserted. Fixed
+by filtering every count to the exact codes `seed.ts`'s own functions
+insert — the correct fix, and, on reflection, the more precise test of
+AUDIT D-3's actual claim regardless of concurrency: a real deployed database
+holds admin-added designations and categories beyond the seed's own
+vocabulary, and a bare table count was never quite testing the right thing.
 
-## Deliberate choices, flagged for review
+## Deliberate scope decisions, flagged for review
 
-**A real database.** Every claim in §A-13.2 is about a decision whose inputs are
-rows. A mocked Prisma would let all forty cases pass with the permission engine
-wired to nothing — precisely the failure the section exists to rule out. Only
-`@/lib/cookies` and `next/cache` are stubbed; sessions and permissions are real.
-Same call T-035, T-038 and T-069 each made.
+**RESTRICT is tested on six representative FKs, not all ~25 in Part B.** Same
+call §B-15's own normalization proof makes for itself — every RESTRICT FK is
+the same shape, same SQLSTATE, same cause — stated in the file's own header
+rather than left for a reviewer to notice the gap.
 
-**One exception to "every action goes through `mutate()`", asserted to stay
-one.** `markMessageReadAction` writes the contact read stamp outside the
-pipeline, because `mutate()` refuses `view` and `contact` has no other
-applicable action — T-068 reasoned it out in its module header. It is exempt
-from the pipeline rule, not from authorization: same `assertCan`, and the sweep
-proves it refuses 401 and 403 like everything else. `PIPELINE_EXCEPTIONS` is
-asserted to have exactly one key.
-
-**The static import test targets the cause, not the symptom.** §A-13.2's last
-row describes a public response containing a `faculty_private` field. Scanning
-responses only catches it when a row is populated; the import is what makes the
-leak possible and is checkable always.
+**`seed-idempotency.test.ts` skips `module_actions`.** Its uniqueness is a
+composite (module, action) pair keyed off a per-module `applicable` map —
+expressible, but the other nine natural-keyed tables already prove the `DO
+NOTHING` pattern holds, and this one would add SQL complexity without a new
+failure mode to catch.
 
 ## Verification
 
-`tsc --noEmit`, `eslint .`, `prettier --check tests/**` clean. **698 / 698 tests
-in 31 files.** `next build` clean.
+`tsc --noEmit`, `eslint tests/db` clean (one unused import found and removed
+along the way). **63 / 63 new tests**, run three ways: each file standalone,
+`tests/db` together, and inside the full `npm test` (761 tests, 41 files) —
+the third run is what caught the concurrency bug above. The only two
+failures anywhere in the full suite are pre-existing and untouched by this
+session: `src/lib/cache.isr.test.ts`'s two build-output assertions, which
+need a fresh `next build` artifact this environment doesn't have queued.
 
-The database is left exactly as found — one user, `superadmin`. Its 20 sessions
-and one `activity_logs` row are dated 07:35–07:47 and belong to B-12's axe
-audit; they predate this session and were not touched.
-
-Two teardown faults were found and fixed along the way, both recorded in
-SESSION-LOG.md: a bare `t110_%` cleanup sweep is **cross-file destructive**
-because Vitest runs spec files in parallel (twelve failures that looked nothing
-like a teardown bug), and the sabotage runs create rows the fixtures do not —
-under a removed guard `createUserAction` genuinely inserts the account row 7
-expects to be refused. Cleanup is now scoped to a per-file `RUN_TAG` and sweeps
-its own prefix, verified against a deliberately failing run.
+The database was left exactly as found: a direct post-suite query confirmed
+`designations` back to 4, `class_grades` to 14, `notice_categories` to 6,
+`gallery_categories` to 4, `fee_types` to 5, `users` to 1, and zero
+`pg_roles` rows matching this suite's probe-role prefix — the ephemeral
+non-superuser roles `audit-append-only.test.ts` creates to prove the REVOKE
+vanish on rollback, every time.
 
 ## Not done
 
-**No defects were fixed** — the Stop line is "Tests only", and the suite found
-none warranting a new id. The closest is `markMessageReadAction` validating
-before it authenticates, so an anonymous caller gets 422 naming a schema field
-rather than 401. It leaks the shape of a one-field schema and writes nothing
-either way, so it is **pinned as current behaviour** rather than filed; if the
-ordering is ever aligned with `mutate()`, that assertion will notice.
-
-**`npm test` still carries `--passWithNoTests`** (T-005). The suite blocks CI
-today — `vitest.config.ts` globs `tests/**` and `ci.yml` runs `npm test`, both
-now asserted by the suite on itself — but that flag means a run which somehow
-collected nothing would still be green. Outside this card's Files list; worth an
-id whenever T-114 touches the pipeline.
+Nothing deferred to a new task id. M8's phase gate still holds M9 and M10
+shut until T-112 through T-114 are done alongside this.

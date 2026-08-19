@@ -57,7 +57,7 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | **B-12** | T-104 ✅ | Accessibility remediation, both locales | **Opus** | High | Medium | A whole-site audit with the loosest scope of any card — judging what to fix, across two scripts and two locales, is the work. | **Completed** |
 | **B-12a** | T-105 ✅ | Fix admin dashboard 500 (`created_at` → `submitted_at`) | **Sonnet** | Low | Low | Added by B-12, which found `/admin` had answered 500 for every admin since T-052 and proved the one-word fix sufficient. Its own id because a `done` task's output is superseded rather than edited. | **Completed** |
 | **B-13** | T-110 ✅ | Authorization matrix test suite | **Opus** | High | High | ~40 cases that decide whether the permission model actually holds. A plausible-looking suite that misses a hole is worse than no suite, because it reads as proof. | **Completed** — 236 cases |
-| **B-14** | T-111 | Repository & constraint integration tests | **Sonnet** | Medium | Low | Mechanical derivation from a schema that already exists and 15 committed migrations. | Pending |
+| **B-14** | T-111 | Repository & constraint integration tests | **Sonnet** | Medium | Low | Mechanical derivation from a schema that already exists and 15 committed migrations. | **Completed** |
 | **B-15** | T-112 | E2E golden paths, both locales, mobile | **Sonnet** | Medium | Low-Medium | Fiddly but well-defined — the paths are named in the card. | Pending |
 | **B-16** | T-113 | Content & ethics gates | **Opus** | High | High | The last thing standing between `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, unconsented faces, and unverified statistics reaching a live school site. Leakage detection is the subtle part. | Pending |
 | **B-17** | T-114 | CI performance, bundle & a11y budgets | **Sonnet** | Medium | Low | Threshold and pipeline configuration against budgets already set in the architecture. | Pending |
@@ -104,9 +104,33 @@ against a re-run of T-104's full axe harness — **the whole site is now clean o
 accessibility violations at every severity, on every route, in both locales.**
 **B-13 has since landed too**, opening M8 with T-110: 236 authorization cases,
 the two universal rows swept across all 93 exported Server Actions, and eight
-deliberate sabotages each proved to turn the suite red. The next batch is
-**B-14** (T-111, repository & constraint integration tests), Sonnet, solo. M8's
-phase gate still holds M9 and M10 shut until T-111 through T-114 are done.
+deliberate sabotages each proved to turn the suite red.
+
+**B-14 has now landed as well.** T-111 added `tests/db/**` — a shared harness
+built on one primitive (every test runs inside a Postgres transaction that is
+always rolled back, so no cleanup sweep is needed) and ten spec files covering
+every category in the card's Do list: singleton guards, `ck_stat_verified` and
+its five sibling date-range CHECKs, all four consent CHECKs, RESTRICT refusals
+(six representative FKs, per the same "representative cases, pattern
+generalizes" call §B-15's own normalization proof makes), soft delete +
+restore, `purge_after`'s GENERATED column (including §B-16's own Dhaka/UTC
+worked example), audit append-only (proved behaviourally via an ephemeral
+non-superuser role, since this database's connection is itself a superuser
+that bypasses the REVOKE), seed idempotency, locale fallback queries, and the
+four "exactly one current/default" partial unique indexes. 63/63 new tests,
+clean across three runs including the full 761-test suite — which is what
+surfaced a real finding: two SQLSTATEs worth knowing (`23001` for an `ON
+DELETE RESTRICT` refusal, not `23503`; Prisma's raw-query error wrapping drops
+the constraint name for a `23505` unique_violation, recovered here via a direct
+`pg_indexes` lookup instead), and a concurrency bug in the seed-idempotency
+test's own first draft — a bare `count(*)` was reading rows other, concurrently
+running test files held open in their own (later-rolled-back) transactions,
+fixed by filtering every count to the exact codes `prisma/seed.ts` itself
+inserts. Full account in SESSION-LOG.md.
+
+The next batch is **B-15** (T-112, E2E golden paths, both locales, mobile),
+Sonnet, solo. M8's phase gate still holds M9 and M10 shut until T-112 through
+T-114 are done.
 
 The B-13 call was right, and for a reason the row half-anticipated. "A
 plausible-looking suite that misses a hole is worse than no suite" is exactly

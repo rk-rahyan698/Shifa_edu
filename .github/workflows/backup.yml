@@ -1,0 +1,103 @@
+# Shifa International School — nightly encrypted backup (T-120)
+#
+# ARCHITECTURE.md §A-14.3:
+#
+#   Database   | Nightly pg_dump -> off-site bucket, ENCRYPTED
+#   Retention  | 7 daily + 4 weekly + 3 monthly
+#   RPO / RTO  | <= 24h data loss / <= 4h to restore
+#
+# `scripts/backup.ts` (this card's own file) does the actual work — pg_dump,
+# encrypt, upload, prune. This workflow only schedules it and supplies the
+# secrets a production run needs, which none of `ci.yml`'s jobs do (that file
+# runs entirely against a disposable, freshly-migrated `shifa_ci` database and
+# never touches the real one).
+#
+# `STORAGE_*`, `BACKUP_ENCRYPTION_KEY` and the production `DATABASE_URL` are
+# repository secrets this workflow expects to exist (Settings -> Secrets and
+# variables -> Actions) — provisioning the actual staging/production
+# environments and their credentials is T-123's card, not this one's. Until
+# those secrets are added, every scheduled run fails loudly (`scripts/backup.ts`
+# fails closed on a missing variable) rather than silently skipping — which is
+# the correct state for an unconfigured backup job to be in.
+#
+# docs/RUNBOOK.md (this card's own file) is where an operator learns what these
+# secrets are and how to restore from what this job produces.
+
+name: Nightly backup
+
+on:
+  # 03:00 Asia/Dhaka (UTC+6) = 21:00 UTC the previous day — outside the
+  # school's working hours, same reasoning §A-11 gives for who this system
+  # serves and when load should be lowest.
+  schedule:
+    - cron: '0 21 * * *'
+  # Manual runs for testing this workflow itself. `dry_run` defaults to true
+  # so a human clicking "Run workflow" from the Actions tab does not
+  # accidentally trigger a real pg_dump and upload against production.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no pg_dump, no upload, no deletion)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# A backup that is still running when the next one starts is a backup that
+# has not finished uploading — never cancel one mid-flight.
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    name: pg_dump -> encrypt -> upload -> prune
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      # `scripts/backup.ts` imports `PrismaClient` only to write the one
+      # `activity_logs` row in `logRun()` — but `@prisma/client` ships
+      # ungenerated until this runs, same as every job in `ci.yml`.
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # `scripts/backup.ts` shells out to `pg_dump` on PATH. Ubuntu 24.04
+      # (`ubuntu-latest`)'s own `postgresql-client` package is version 16,
+      # matching the server every migration in this repo targets (docker-compose.yml,
+      # ci.yml's `postgres:16-alpine` service) — no PGDG repo needed, unlike an
+      # older Ubuntu image where the preinstalled client would lag the server.
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          pg_dump --version
+
+      - name: Run backup job
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STORAGE_ENDPOINT: ${{ secrets.STORAGE_ENDPOINT }}
+          STORAGE_REGION: ${{ secrets.STORAGE_REGION }}
+          STORAGE_ACCESS_KEY_ID: ${{ secrets.STORAGE_ACCESS_KEY_ID }}
+          STORAGE_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SECRET_ACCESS_KEY }}
+          STORAGE_PRIVATE_BUCKET: ${{ secrets.STORAGE_PRIVATE_BUCKET }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/backup.ts --dry-run
+          else
+            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/backup.ts
+          fi

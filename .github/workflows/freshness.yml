@@ -1,0 +1,90 @@
+# Shifa International School — weekly content-freshness report (T-124)
+#
+# ARCHITECTURE.md §A-15's last row:
+#
+#   Content freshness | Weekly automated email to the principal | No notice
+#   in 30 days; unread messages >7 days old; sections still holding
+#   placeholders; unverified statistics
+#
+# `scripts/freshness-report.ts` (this card's own file) does the actual work —
+# four independent queries, a Bangla plaintext report (this card's own
+# Contract: "Bangla, since the recipient is the principal"), and delivery
+# over a hand-rolled SMTP client. This workflow only schedules it and
+# supplies the secrets a real run needs — the same split `backup.yml`
+# (T-120), `purge.yml` (T-121) and `keepalive.yml` (T-122) all use, and for
+# the same reason: `ci.yml` never touches the real database, the real SMTP
+# relay, or a real inbox, only disposable ones.
+#
+# `docs/RUNBOOK.md` is NOT this card's file (its Files list is exactly
+# `scripts/freshness-report.ts` and this workflow), so the secrets below are
+# documented here rather than there — the same choice `backup.yml` and
+# `purge.yml` made before RUNBOOK.md existed to hold anything.
+
+name: Weekly content-freshness report
+
+on:
+  # 08:00 Asia/Dhaka (UTC+6) every Sunday = 02:00 UTC Sunday — the start of
+  # the school's week, so the report is the first thing waiting Sunday
+  # morning rather than arriving mid-week.
+  schedule:
+    - cron: '0 2 * * 0'
+  # Manual runs for testing this workflow itself. `dry_run` defaults to true
+  # so a human clicking "Run workflow" does not accidentally email the
+  # principal a test report.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (print the report, send nothing)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  freshness-report:
+    name: Gather signals -> render -> email
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # DATABASE_URL / SMTP_* / EMAIL_FROM are the same production secrets
+      # backup.yml, purge.yml and keepalive.yml already use.
+      #
+      # FRESHNESS_REPORT_RECIPIENT is new to this job: the principal's real
+      # inbox address. Not added to `src/lib/env.ts` — outside this card's
+      # Files list, the same reason `BACKUP_ENCRYPTION_KEY` (T-120) sits
+      # outside it too — and not invented here, per the global rule against
+      # originating a fact about the school (ARCHITECTURE.md §A-3): a human
+      # sets this secret once, from the school's own A-3.1 checklist (row 20,
+      # "official email").
+      - name: Run freshness report
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          FRESHNESS_REPORT_RECIPIENT: ${{ secrets.FRESHNESS_REPORT_RECIPIENT }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/freshness-report.ts --dry-run
+          else
+            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/freshness-report.ts
+          fi

@@ -1,0 +1,780 @@
+# Shifa International School — staging & production deployment pipeline (T-123)
+#
+# ARCHITECTURE.md §A-14.2:
+#
+#   PR -> lint · typecheck · unit · integration · AUTHORIZATION MATRIX · e2e
+#      -> a11y · lighthouse budgets · bundle budget · i18n parity · secret scan
+#      -> preview deploy
+#   merge to main -> migrate STAGING -> smoke -> manual approval
+#      -> migrate PROD -> deploy -> smoke -> tag
+#
+# The first half of that ladder is `ci.yml` (T-005/T-114) and is untouched
+# here. This file is the second half, and it starts where CI ends: the
+# `workflow_run` trigger below fires only when the **CI** workflow has already
+# finished green on `main`, so nothing in this file can run against a commit CI
+# has not passed. That is the mechanical reading of "merge to main ->" in the
+# diagram above — a plain `push` trigger would race CI rather than follow it.
+#
+# ARCHITECTURE.md §A-14.1's three environments:
+#
+#   Local      | Development | Seeded synthetic; never production data
+#   Staging    | Migration rehearsal, review, acceptance
+#              | Anonymized copy — contact messages and faculty personal
+#              | fields scrubbed
+#   Production | Live | Real
+#
+# This card's Contract: **production migrations never run without a green
+# staging run first.** Three independent things enforce it, because one is a
+# single edit away from being wrong:
+#
+#   1. The `production` job has `needs: [staging]`, so GitHub will not start it
+#      while the staging job is running, failed or skipped.
+#   2. That job's first step re-asserts `needs.staging.result == 'success'`
+#      itself and exits non-zero otherwise — a guard against a future
+#      `if: always()` being added to the job without noticing what it unlocks.
+#   3. Both jobs run in the same workflow run, against one commit (see the
+#      `ref:` on every checkout). The staging run that went green is therefore
+#      necessarily a run of the *same commit* about to reach production, not
+#      an earlier one that happened to be green.
+#
+# The manual approval in the middle is the `production` job's
+# `environment: production`. A GitHub environment with **required reviewers**
+# holds the job in a "Waiting" state until a named human approves it in the
+# Actions tab; nothing downstream of it starts before then. Setting those
+# reviewers is a repository-settings step, not a file in this repository —
+# `docs/RUNBOOK.md`'s "Deployment pipeline" section (this card's own file) is
+# where an operator is told to do it, including the failure mode if they do
+# not: an environment with no reviewers configured does not pause at all, and
+# the gate silently is not a gate.
+#
+# Migrate, deploy and smoke are all steps of that ONE job rather than three
+# jobs, because GitHub evaluates environment protection per job — three jobs
+# naming `environment: production` would mean three approval prompts for one
+# release. See the job's own header.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# Why the staging database URL has its own secret name
+#
+# `backup.yml`, `purge.yml` and `keepalive.yml` all read a repository-level
+# `DATABASE_URL`, and it points at **production**. If this file's staging job
+# also read `secrets.DATABASE_URL` and relied on the `staging` environment to
+# override it, then a `staging` environment that is missing that one secret
+# would quietly fall back to the repository-level value — and "migrate
+# staging" would migrate, scrub and anonymize **production**. That is the
+# single most destructive mistake available in this file.
+#
+# So staging uses `STAGING_DATABASE_URL`, a name with no repository-level
+# fallback: unset means empty, and empty fails closed at the guard step below.
+# The guard additionally compares the two connection strings and refuses to
+# continue if they name the same database, which catches the other half of the
+# mistake (the secret exists, but someone pasted production into it). Neither
+# value is ever printed — only the comparison's result.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# Why deployment goes through a hook URL rather than a named host
+#
+# ARCHITECTURE.md decides the shape of the pipeline but names no hosting
+# provider, and A-3.1 row 24 ("Named account owners: hosting, database,
+# storage, email") is still unassigned — so picking one here would be
+# inventing a fact about the school, which the global rules forbid. Instead
+# each environment supplies a deploy hook URL: a plain `POST` endpoint that
+# tells the host "build and release this branch". Vercel (Deploy Hooks),
+# Netlify (Build Hooks), Render, Railway and Coolify all expose exactly this,
+# so the pipeline is provider-agnostic and the choice stays the operator's. If
+# the hook secret is unset the job fails on a named message rather than
+# reporting a deploy that never happened — the same fail-closed posture
+# `scripts/backup.ts` takes on a missing variable.
+#
+# What this costs, stated plainly rather than papered over: a deploy hook is
+# fire-and-forget, so "the deploy finished" is inferred from the environment
+# answering 200 again, not from the provider confirming this exact commit is
+# live. `docs/RUNBOOK.md`'s "What this pipeline does not prove" subsection
+# records that limit and what an operator should check alongside it.
+
+name: Deploy
+
+on:
+  # Green CI on main is the only automatic entry point — see the header.
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+  # Manual re-runs: a redeploy of the current main without a new commit, or a
+  # rerun after fixing an environment-side problem. The approval gate applies
+  # identically — a dispatch cannot skip it.
+  workflow_dispatch:
+
+# Least privilege by default. Only the `tag` job needs to write, and it raises
+# its own permission block rather than this one being widened for everybody.
+permissions:
+  contents: read
+
+# One deployment at a time, and never cancel one in flight: a run cancelled
+# between "migrate PROD" and "deploy" leaves a database ahead of the code
+# serving it. Queue instead.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  # ===========================================================================
+  # STAGING — migrate, anonymize, prove the anonymization, deploy, smoke
+  # ===========================================================================
+  staging:
+    name: Migrate + anonymize + deploy STAGING
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Only a *successful* CI run on *main* proceeds. A red CI run, or a green
+    # one on a branch or a pull request, is not a release candidate.
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_BASE_URL }}
+
+    steps:
+      # -- The guard described in the header. First step, before anything has
+      #    had a chance to connect anywhere. ---------------------------------
+      - name: Guard - staging is a different database from production
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          PRODUCTION_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: |
+          set -u
+          if [ -z "${STAGING_DATABASE_URL}" ]; then
+            echo "::error::STAGING_DATABASE_URL is not set on the 'staging' environment."
+            echo "This job refuses to fall back to the repository-level DATABASE_URL,"
+            echo "which points at production. See docs/RUNBOOK.md, 'Deployment pipeline'."
+            exit 1
+          fi
+          if [ -z "${STAGING_BASE_URL}" ]; then
+            echo "::error::STAGING_BASE_URL is not set as a variable on the 'staging' environment."
+            exit 1
+          fi
+          # Compared as hashes so neither connection string can reach the log,
+          # and the hashes themselves are compared without being printed.
+          staging_fp=$(printf '%s' "${STAGING_DATABASE_URL}" | sha256sum | cut -d' ' -f1)
+          prod_fp=$(printf '%s' "${PRODUCTION_DATABASE_URL}" | sha256sum | cut -d' ' -f1)
+          if [ -n "${PRODUCTION_DATABASE_URL}" ] && [ "${staging_fp}" = "${prod_fp}" ]; then
+            echo "::error::STAGING_DATABASE_URL and the production DATABASE_URL are the same database."
+            echo "Refusing to migrate, scrub and anonymize production. Fix the 'staging'"
+            echo "environment secret before re-running."
+            exit 1
+          fi
+          echo "Staging and production point at different databases. Continuing."
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # `workflow_run` runs the default branch's copy of this file but must
+          # deploy the commit CI actually tested, which is the triggering run's
+          # head SHA — not `github.sha`, which for a `workflow_run` event is the
+          # default branch tip and can already have moved on.
+          # `workflow_dispatch` has no triggering run, so `github.sha` (the ref
+          # the human dispatched) is the right value there.
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # `psql` for the anonymization below. Ubuntu 24.04's own
+      # `postgresql-client` is version 16 — the same reasoning, and the same
+      # step, `backup.yml` already carries for `pg_dump`.
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          psql --version
+
+      # -- §A-14.2's "migrate STAGING". Forward-only, the same
+      #    `prisma migrate deploy` `ci.yml` runs against its disposable
+      #    database and the same command `npm run db:migrate` names. This is
+      #    the rehearsal: a migration that fails here has not touched
+      #    production, because nothing downstream of this job has started. ----
+      - name: Migrate STAGING
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: npx prisma migrate deploy
+
+      # -- §A-14.1's "Anonymized copy — contact messages and faculty personal
+      #    fields scrubbed".
+      #
+      #    This runs on EVERY staging deployment, not only after a refresh
+      #    from a production backup. That is deliberate: tying the scrub to the
+      #    restore procedure makes it a step a tired operator can skip at 3am,
+      #    whereas running it unconditionally makes it an invariant — whatever
+      #    route data took into staging, it is scrubbed before the staging site
+      #    is deployed or shown to anyone. Every statement is idempotent, so
+      #    re-running against already-scrubbed data rewrites the same values
+      #    and changes nothing.
+      #
+      #    `--single-transaction` with `ON_ERROR_STOP=1`: a scrub that fails
+      #    half way through is a staging database still holding real parent
+      #    contact details in the rows it did not reach. Either all of it
+      #    applies or none of it does.
+      #
+      #    NULLs are preserved as NULLs throughout. Staging is where the admin
+      #    UI is accepted, and "this optional field is empty" renders
+      #    differently from "this optional field has a value" — replacing every
+      #    NULL with a placeholder would quietly change the shape of the data
+      #    being reviewed.
+      #
+      #    `.invalid` is reserved by RFC 2606 and can never resolve, so no
+      #    scrubbed address can receive mail even if a staging misconfiguration
+      #    points a real SMTP relay at it.
+      - name: Anonymize STAGING
+        env:
+          PGURL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          psql "${PGURL}" --single-transaction -v ON_ERROR_STOP=1 <<'SQL'
+          -- contact_messages — every field a parent supplied, plus the two
+          -- request fingerprints stored beside them (§A-16.1 treats ip_hash
+          -- and user_agent as part of the message's personal data).
+          UPDATE contact_messages SET
+            name       = 'Staging Contact ' || id,
+            phone      = '+880000000000',
+            email      = CASE WHEN email IS NULL THEN NULL
+                              ELSE 'staging+msg' || id || '@example.invalid' END,
+            message    = 'Anonymized for staging (T-123). Original message not copied.',
+            ip_hash    = NULL,
+            user_agent = NULL;
+
+          -- faculty_private — the whole table is personal data by
+          -- construction. §A-9.3 keeps it out of the public site; keeping the
+          -- real values in staging would put them somewhere with weaker access
+          -- control than the place they were deliberately kept out of.
+          UPDATE faculty_private SET
+            personal_phone    = CASE WHEN personal_phone IS NULL THEN NULL
+                                     ELSE '+880000000000' END,
+            personal_email    = CASE WHEN personal_email IS NULL THEN NULL
+                                     ELSE 'staging+fac' || faculty_id || '@example.invalid' END,
+            emergency_contact = CASE WHEN emergency_contact IS NULL THEN NULL
+                                     ELSE 'Anonymized for staging (T-123).' END,
+            internal_notes    = CASE WHEN internal_notes IS NULL THEN NULL
+                                     ELSE 'Anonymized for staging (T-123).' END;
+
+          -- Beyond the card's two named sets, and stated as such rather than
+          -- smuggled in: the tables below are not "personal fields", they are
+          -- CREDENTIAL material. A production dump carries live session
+          -- tokens, unspent password-reset tokens and real bcrypt hashes, and
+          -- every one of them is a working key into a real staff account. A
+          -- copy of production data that keeps them is not anonymized in any
+          -- useful sense — it is production access with a different hostname.
+          DELETE FROM sessions;
+          DELETE FROM password_reset_tokens;
+          DELETE FROM login_attempts;
+
+          -- `!staging-locked` is not a bcrypt hash and cannot be produced by
+          -- hashing anything, so no password verifies against it.
+          -- `src/lib/auth.ts`'s `verifyPassword` already returns false for a
+          -- malformed hash rather than throwing ("a corrupt row must fail
+          -- closed, not 500"), so this locks every copied account without
+          -- putting a 500 in the login path. Getting into staging afterwards
+          -- is a documented one-liner in docs/RUNBOOK.md — deliberately a
+          -- human step, so a staging login always has a named owner.
+          UPDATE users SET
+            password_hash      = '!staging-locked',
+            email              = CASE WHEN email IS NULL THEN NULL
+                                      ELSE 'staging+user' || id || '@example.invalid' END,
+            failed_login_count = 0,
+            locked_until       = NULL;
+          SQL
+
+      # -- An anonymization step that silently did nothing looks exactly like
+      #    one that worked. This asserts the post-condition instead of trusting
+      #    an exit code: every counted row is a row that survived the scrub,
+      #    and any non-zero total fails the staging job — which, by the
+      #    Contract's `needs` chain, also stops production. ------------------
+      - name: Assert STAGING really is anonymized
+        env:
+          PGURL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          set -u
+          leaked=$(psql "${PGURL}" -v ON_ERROR_STOP=1 -tAc "
+            SELECT
+              (SELECT count(*) FROM contact_messages
+                 WHERE name <> 'Staging Contact ' || id
+                    OR phone <> '+880000000000'
+                    OR message <> 'Anonymized for staging (T-123). Original message not copied.'
+                    OR ip_hash IS NOT NULL
+                    OR user_agent IS NOT NULL
+                    OR (email IS NOT NULL AND email NOT LIKE '%@example.invalid'))
+            + (SELECT count(*) FROM faculty_private
+                 WHERE (personal_phone IS NOT NULL AND personal_phone <> '+880000000000')
+                    OR (personal_email IS NOT NULL AND personal_email NOT LIKE '%@example.invalid')
+                    OR (emergency_contact IS NOT NULL AND emergency_contact <> 'Anonymized for staging (T-123).')
+                    OR (internal_notes IS NOT NULL AND internal_notes <> 'Anonymized for staging (T-123).'))
+            + (SELECT count(*) FROM users
+                 WHERE password_hash <> '!staging-locked'
+                    OR (email IS NOT NULL AND email NOT LIKE '%@example.invalid'))
+            + (SELECT count(*) FROM sessions)
+            + (SELECT count(*) FROM password_reset_tokens)
+            + (SELECT count(*) FROM login_attempts)")
+          if [ "${leaked}" != "0" ]; then
+            echo "::error::${leaked} row(s) in staging still hold unscrubbed personal or credential data."
+            echo "Staging is NOT anonymized. Refusing to deploy it, which also stops production."
+            exit 1
+          fi
+          echo "Anonymization verified: 0 unscrubbed rows."
+
+      # -- T-113's content & ethics gates, run against the staging database.
+      #
+      #    `ci.yml`'s own comment on its non-strict run names this card as one
+      #    of the two places that turn the allowance off: "T-130 and the deploy
+      #    pipeline (T-123) are what set `GATES_STRICT=1`". This is that wiring.
+      #
+      #    Staging is the right target, not production, for two reasons. §A-14.1
+      #    gives staging the job of *acceptance*, which is exactly this question.
+      #    And the suite is not read-only: `tests/gates/harness.ts` starts a
+      #    `next dev` server, seeds the violation each gate exists to catch, and
+      #    drops CHECK constraints inside a doomed transaction to prove the
+      #    sweep is not vacuous. Rolled back or not, that is not something to
+      #    point at the live database. Because `production-migrate` has
+      #    `needs: [staging]`, a red gate here still blocks production — so this
+      #    prevents a placeholder release rather than merely reporting one.
+      #
+      #    `GATES_STRICT` comes from a repository/environment VARIABLE rather
+      #    than being hard-coded to 1. Hard-coding it today would fail this job
+      #    permanently — the seeded scaffold still holds §A-3.1's 16 structural
+      #    `page_translations.meta_title` placeholders until T-130 loads the
+      #    school's real content — and because production needs staging green,
+      #    a permanently red gate here would block every deployment of every
+      #    code change until then. That is the precise outcome `ci.yml`'s
+      #    comment says T-113's suite was written to avoid. Unset, the gate
+      #    still fails on any *authored* placeholder, which is the regression
+      #    that matters meanwhile. Setting `CONTENT_GATES_STRICT=1` is the last
+      #    step of T-130 and is documented in docs/RUNBOOK.md.
+      #
+      #    The non-secret values below are shape-satisfiers for `src/lib/env.ts`'s
+      #    boot validation, copied from `ci.yml`'s own env block for the same
+      #    reason it gives: no SMTP relay or S3 endpoint is ever dialled by this
+      #    suite, so only the zod schema's shape has to be met. They are scoped
+      #    to this one step rather than the workflow, so nothing else — least of
+      #    all the production jobs — inherits them.
+      - name: Content & ethics gates against STAGING (T-113)
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+          GATES_STRICT: ${{ vars.CONTENT_GATES_STRICT }}
+          NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+          SESSION_SECRET: staging-gate-run-placeholder-not-a-real-secret-000
+          SMTP_HOST: localhost
+          SMTP_PORT: 1025
+          SMTP_USER: gate
+          SMTP_PASSWORD: gate
+          EMAIL_FROM: gate@example.invalid
+          STORAGE_ENDPOINT: http://localhost:9000
+          STORAGE_REGION: us-east-1
+          STORAGE_ACCESS_KEY_ID: gate
+          STORAGE_SECRET_ACCESS_KEY: gate
+          STORAGE_PUBLIC_BUCKET: gate-public
+          STORAGE_PRIVATE_BUCKET: gate-private
+          STORAGE_PUBLIC_BASE_URL: http://localhost:9000/gate-public
+        run: |
+          if [ "${GATES_STRICT}" = "1" ]; then
+            echo "Running the content gates STRICT — no scaffold placeholder is allowed."
+          else
+            echo "Running the content gates non-strict: prisma/seed.ts's structural"
+            echo "page_translations.meta_title scaffold is allowed, any authored"
+            echo "placeholder still fails. Set the CONTENT_GATES_STRICT variable to 1"
+            echo "once T-130 has loaded the school's content."
+          fi
+          npx vitest run tests/gates
+
+      - name: Deploy STAGING
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.STAGING_DEPLOY_HOOK_URL }}
+        run: |
+          set -u
+          if [ -z "${DEPLOY_HOOK_URL}" ]; then
+            echo "::error::STAGING_DEPLOY_HOOK_URL is not set on the 'staging' environment."
+            echo "See docs/RUNBOOK.md, 'Deployment pipeline'."
+            exit 1
+          fi
+          code=$(curl -sS -X POST -o /tmp/hook.out -w '%{http_code}' --max-time 60 "${DEPLOY_HOOK_URL}") || code=000
+          echo "Deploy hook responded ${code}."
+          case "${code}" in
+            2*) ;;
+            *) echo "::error::Staging deploy hook did not accept the request (HTTP ${code})."; exit 1 ;;
+          esac
+
+      - name: Wait for STAGING to come back up
+        env:
+          BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: |
+          set -u
+          # 60 x 20s = 20 minutes. A build that has not finished by then is a
+          # build to investigate, not one to keep waiting on.
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${BASE_URL}/") || code=000
+            if [ "${code}" = "200" ]; then
+              echo "Staging is serving (attempt ${i})."
+              exit 0
+            fi
+            echo "attempt ${i}: HTTP ${code} - waiting"
+            sleep 20
+          done
+          echo "::error::Staging did not return HTTP 200 within 20 minutes of the deploy hook."
+          exit 1
+
+      # -- §A-14.2's "smoke". See the `production-smoke` job for why this block
+      #    appears twice rather than once. -----------------------------------
+      - name: Smoke STAGING
+        env:
+          BASE_URL: ${{ vars.STAGING_BASE_URL }}
+        run: |
+          set -u
+          fail=0
+
+          # ADR-005's route shape, asserted against a running deployment rather
+          # than against the router's source: Bangla is unprefixed, English is
+          # /en-prefixed, and an externally requested /bn/* is a 404
+          # (src/middleware.ts's `localeRewrite`).
+          check() {
+            path="$1"; expect="$2"
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${BASE_URL}${path}") || code=000
+            if [ "${code}" = "${expect}" ]; then
+              echo "ok    ${path} -> ${code}"
+            else
+              echo "::error::SMOKE ${path} returned ${code}, expected ${expect}"
+              fail=1
+            fi
+          }
+
+          check /            200
+          check /en          200
+          check /notices     200
+          check /en/notices  200
+          check /contact     200
+          check /en/contact  200
+          check /faculty     200
+          check /admission   200
+          check /login       200
+          check /bn          404
+          check /bn/notices  404
+
+          # An unmatched public URL. Its STATUS is deliberately not asserted.
+          # T-090's own file header records a defect measured both ways:
+          # `[locale]/loading.tsx` makes the route streamable, so Next commits
+          # `200 OK` before `notFound()` throws, and the bilingual 404 page is
+          # served under a 200 status line. Fixing that costs a route group and
+          # a new task id (written up in PENDING-COMMIT.md), so asserting 404
+          # here would paint every future deployment red for a defect this
+          # pipeline neither owns nor can fix.
+          #
+          # What is asserted is the half that survives that fix: the reader gets
+          # the 404 page. `/bn` and `/bn/notices` above still assert a real 404
+          # status — those are refused by the layout's locale guard before the
+          # stream starts, so the defect does not reach them, and they are what
+          # keeps ADR-005's "/bn/* is a 404" rule genuinely covered here.
+          nf_body=$(curl -sS --max-time 30 "${BASE_URL}/no-such-page-exists") || nf_body=""
+          case "${nf_body}" in
+            *'Page not found'*) echo 'ok    /no-such-page-exists renders the bilingual 404 page' ;;
+            *) echo '::error::SMOKE an unmatched URL did not render the 404 page'; fail=1 ;;
+          esac
+
+          # /admin with no session is a redirect to /login — §A-6's admin
+          # lifecycle. A 200 here would mean the session check is not running
+          # at all, which is the failure worth catching on a live deployment.
+          admin_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${BASE_URL}/admin") || admin_code=000
+          admin_loc=$(curl -sS -o /dev/null -w '%{redirect_url}' --max-time 30 "${BASE_URL}/admin") || admin_loc=""
+          case "${admin_code}" in
+            30*) echo "ok    /admin -> ${admin_code} ${admin_loc}" ;;
+            *) echo "::error::SMOKE /admin returned ${admin_code}, expected a redirect to /login"; fail=1 ;;
+          esac
+          case "${admin_loc}" in
+            */login*) ;;
+            *) echo "::error::SMOKE /admin redirected to '${admin_loc}', expected /login"; fail=1 ;;
+          esac
+
+          # The rendered document, not just its status code.
+          bn_body=$(curl -sS --max-time 30 "${BASE_URL}/") || bn_body=""
+          en_body=$(curl -sS --max-time 30 "${BASE_URL}/en") || en_body=""
+
+          case "${bn_body}" in
+            *'lang="bn"'*) echo 'ok    / carries lang="bn"' ;;
+            *) echo '::error::SMOKE / did not render lang="bn"'; fail=1 ;;
+          esac
+          case "${en_body}" in
+            *'lang="en"'*) echo 'ok    /en carries lang="en"' ;;
+            *) echo '::error::SMOKE /en did not render lang="en"'; fail=1 ;;
+          esac
+
+          # T-113's placeholder gate, re-read at runtime: the CI gate reads the
+          # database, this reads what a visitor is actually served.
+          #
+          # On STAGING this is a WARNING, not a failure — and that asymmetry
+          # with the production copy below is the point, not an oversight.
+          # §A-14.1 gives staging the job of "migration rehearsal, review,
+          # acceptance": it is precisely where half-written content is looked
+          # at, and until T-130 loads the A-3.1 checklist the seeded scaffold
+          # legitimately still carries markers. Failing here would make the
+          # staging job permanently red, and since production `needs: [staging]`
+          # that would block every deployment of every code change until the
+          # content load finished. The gate that must not be softened is the
+          # production one, and it is not.
+          for body in "${bn_body}" "${en_body}"; do
+            case "${body}" in
+              *'CONTENT REQUIRED'*)
+                echo '::warning::A staging page still contains the [[CONTENT REQUIRED]] placeholder marker (T-130 loads the real content). This is an error, not a warning, on production.' ;;
+            esac
+          done
+
+          exit "${fail}"
+
+  # ===========================================================================
+  # PRODUCTION — approval gate, then migrate -> deploy -> smoke
+  #
+  # `environment: production` IS §A-14.2's manual approval: with required
+  # reviewers configured on that environment, GitHub holds this job in a
+  # "Waiting" state before its first step runs.
+  #
+  # **This is deliberately ONE job and must stay one job.** GitHub evaluates an
+  # environment's protection rules per *job*, not per run — so splitting this
+  # into `production-migrate` / `production-deploy` / `production-smoke`, each
+  # naming `environment: production`, would demand three separate human
+  # approvals for a single release. Worse than the nuisance: an approver who
+  # has already clicked once reads later prompts as duplicates and clicks
+  # through them, which is how a gate becomes a formality. One job, one
+  # approval, covering exactly the sequence §A-14.2 puts after the gate:
+  # migrate -> deploy -> smoke.
+  #
+  # `tag` stays a separate job because it names no environment and so is never
+  # held for approval — and it needs `contents: write`, which nothing that
+  # touches production credentials should also carry.
+  # ===========================================================================
+  production:
+    name: Migrate + deploy PRODUCTION (manual approval)
+    needs: [staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_BASE_URL }}
+
+    steps:
+      # Reason 2 of the three in this file's header. `needs` already implies
+      # this; the point of restating it is that `needs` can be weakened by an
+      # added `if:` without anyone noticing, and this step cannot.
+      - name: Guard - the staging run for this commit was green
+        run: |
+          set -u
+          result="${{ needs.staging.result }}"
+          if [ "${result}" != "success" ]; then
+            echo "::error::The staging job for this commit ended '${result}', not 'success'."
+            echo "Production migrations never run without a green staging run first."
+            exit 1
+          fi
+          echo "Staging was green for this commit. Proceeding to the production migration."
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # §A-14.2: "Migrations are forward-only and backward-compatible (expand
+      # -> migrate -> contract), so a rollback of application code never
+      # strands the database." That property is what makes migrating BEFORE
+      # deploying safe: between this step and the next one, the old code runs
+      # against the new schema, which an expand-phase migration supports by
+      # construction. The reverse order would leave new code reading columns
+      # that do not exist yet.
+      - name: Migrate PRODUCTION
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -u
+          if [ -z "${DATABASE_URL}" ]; then
+            echo "::error::DATABASE_URL is not available to the 'production' environment."
+            exit 1
+          fi
+          npx prisma migrate deploy
+
+      - name: Deploy PRODUCTION
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.PRODUCTION_DEPLOY_HOOK_URL }}
+        run: |
+          set -u
+          if [ -z "${DEPLOY_HOOK_URL}" ]; then
+            echo "::error::PRODUCTION_DEPLOY_HOOK_URL is not set on the 'production' environment."
+            echo "See docs/RUNBOOK.md, 'Deployment pipeline'."
+            exit 1
+          fi
+          code=$(curl -sS -X POST -o /tmp/hook.out -w '%{http_code}' --max-time 60 "${DEPLOY_HOOK_URL}") || code=000
+          echo "Deploy hook responded ${code}."
+          case "${code}" in
+            2*) ;;
+            *) echo "::error::Production deploy hook did not accept the request (HTTP ${code})."; exit 1 ;;
+          esac
+
+      - name: Wait for PRODUCTION to come back up
+        env:
+          BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+        run: |
+          set -u
+          if [ -z "${BASE_URL}" ]; then
+            echo "::error::PRODUCTION_BASE_URL is not set as a variable on the 'production' environment."
+            exit 1
+          fi
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "${BASE_URL}/") || code=000
+            if [ "${code}" = "200" ]; then
+              echo "Production is serving (attempt ${i})."
+              exit 0
+            fi
+            echo "attempt ${i}: HTTP ${code} - waiting"
+            sleep 20
+          done
+          echo "::error::Production did not return HTTP 200 within 20 minutes of the deploy hook."
+          exit 1
+
+      # -- The same smoke suite as the staging job, against production.
+      #
+      #    It is duplicated rather than shared. Sharing it would mean either a
+      #    composite action under `.github/actions/` or a reusable workflow —
+      #    both new files, and this card's Files list is exactly `deploy.yml`
+      #    and `docs/RUNBOOK.md`. Duplication inside one file, where a reader
+      #    sees both copies, is the honest version of that constraint; a third
+      #    copy would be the point to raise a task for a composite action.
+      #
+      #    The two copies differ in exactly ONE place, deliberately: the
+      #    `[[CONTENT REQUIRED]]` check is a warning on staging and a failure
+      #    here. See the staging copy for why.
+      - name: Smoke PRODUCTION
+        env:
+          BASE_URL: ${{ vars.PRODUCTION_BASE_URL }}
+        run: |
+          set -u
+          fail=0
+
+          check() {
+            path="$1"; expect="$2"
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${BASE_URL}${path}") || code=000
+            if [ "${code}" = "${expect}" ]; then
+              echo "ok    ${path} -> ${code}"
+            else
+              echo "::error::SMOKE ${path} returned ${code}, expected ${expect}"
+              fail=1
+            fi
+          }
+
+          check /            200
+          check /en          200
+          check /notices     200
+          check /en/notices  200
+          check /contact     200
+          check /en/contact  200
+          check /faculty     200
+          check /admission   200
+          check /login       200
+          check /bn          404
+          check /bn/notices  404
+
+          # Status not asserted — see the staging job's copy of this block for
+          # the T-090 streaming defect this works around.
+          nf_body=$(curl -sS --max-time 30 "${BASE_URL}/no-such-page-exists") || nf_body=""
+          case "${nf_body}" in
+            *'Page not found'*) echo 'ok    /no-such-page-exists renders the bilingual 404 page' ;;
+            *) echo '::error::SMOKE an unmatched URL did not render the 404 page'; fail=1 ;;
+          esac
+
+          admin_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${BASE_URL}/admin") || admin_code=000
+          admin_loc=$(curl -sS -o /dev/null -w '%{redirect_url}' --max-time 30 "${BASE_URL}/admin") || admin_loc=""
+          case "${admin_code}" in
+            30*) echo "ok    /admin -> ${admin_code} ${admin_loc}" ;;
+            *) echo "::error::SMOKE /admin returned ${admin_code}, expected a redirect to /login"; fail=1 ;;
+          esac
+          case "${admin_loc}" in
+            */login*) ;;
+            *) echo "::error::SMOKE /admin redirected to '${admin_loc}', expected /login"; fail=1 ;;
+          esac
+
+          bn_body=$(curl -sS --max-time 30 "${BASE_URL}/") || bn_body=""
+          en_body=$(curl -sS --max-time 30 "${BASE_URL}/en") || en_body=""
+
+          case "${bn_body}" in
+            *'lang="bn"'*) echo 'ok    / carries lang="bn"' ;;
+            *) echo '::error::SMOKE / did not render lang="bn"'; fail=1 ;;
+          esac
+          case "${en_body}" in
+            *'lang="en"'*) echo 'ok    /en carries lang="en"' ;;
+            *) echo '::error::SMOKE /en did not render lang="en"'; fail=1 ;;
+          esac
+
+          # On production this is not a regression check, it is the publication
+          # gate: §A-3.1's marker reaching a live school page is the exact
+          # failure T-113 exists to prevent, and a red smoke here is what stops
+          # the release being tagged as good. Note what is already true by the
+          # time this runs — production has been migrated and the new build is
+          # live — so this does not *prevent* a placeholder being published, it
+          # detects one and refuses to certify the release. The gate that
+          # prevents is T-113's, in CI, before any of this starts; this is the
+          # last of several nets, not the first.
+          for body in "${bn_body}" "${en_body}"; do
+            case "${body}" in
+              *'CONTENT REQUIRED'*)
+                echo '::error::SMOKE a served page contains the [[CONTENT REQUIRED]] placeholder marker'
+                fail=1 ;;
+            esac
+          done
+
+          exit "${fail}"
+
+  # ===========================================================================
+  # §A-14.2's final "-> tag". The tag is the record of which commit is live,
+  # written only after production has been smoked green — so an untagged commit
+  # on main is, by construction, one that never completed a release.
+  # ===========================================================================
+  tag:
+    name: Tag the released commit
+    needs: [production]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The one job that writes to the repository, and the only reason the
+    # workflow-level default above is not the last word.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Create and push the release tag
+        run: |
+          set -u
+          sha="$(git rev-parse HEAD)"
+          tag="deploy-$(date -u +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD)"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null 2>&1; then
+            echo "Tag ${tag} already exists - nothing to do."
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git tag -a "${tag}" -m "Released to production: ${sha}"
+          git push origin "${tag}"
+          echo "Tagged ${sha} as ${tag}."

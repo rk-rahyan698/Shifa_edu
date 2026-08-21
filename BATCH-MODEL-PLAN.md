@@ -63,7 +63,7 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | **B-17** | T-114 ✅ | CI performance, bundle & a11y budgets | **Sonnet** | Medium | Low | Threshold and pipeline configuration against budgets already set in the architecture. | **Completed** |
 | **B-18** | T-120 ✅, T-121 ✅| Nightly encrypted backup; retention purge | **Opus** | High | High | One job encrypts, the other **permanently deletes** — messages at 12 months, audit at 24. An off-by-one in a retention window destroys records nobody knows are gone. | **Completed** |
 | **B-19** | T-122 ✅, T-124 ✅ | Uptime/error/auth alerts; freshness report | **Sonnet** | Medium | Low-Medium | Integration and configuration against third-party services, with a report reading from what T-122 collects. | **Completed** |
-| **B-20** | T-123 | Staging & production envs, migration pipeline | **Opus** | High | High | Live infrastructure and real secrets. A migration pipeline that is wrong is discovered in production. | Pending |
+| **B-20** | T-123 ✅ | Staging & production envs, migration pipeline | **Opus** | High | High | Live infrastructure and real secrets. A migration pipeline that is wrong is discovered in production. | **Completed** |
 | **B-21** | T-130 | Content load from the A-3.1 checklist | **Sonnet** | Low-Medium | Medium | Structured data entry against a signed-off checklist. Judgement is the human's; the constraint is that no placeholder survives. | Pending |
 | **B-22** | T-131 | Human gates: security, a11y, restore, walkthrough | **Human only** | — | High | Not an AI task under any model. An AI may set this to `awaiting_human` and never to `done`. See `phase_gates.human_gates`. | Pending |
 | **B-23** | T-132 | Go-live: domain, DNS, seed, rotate, handover | **Opus** | High | Very High | Irreversible and public. Credential rotation and DNS cutover get one attempt in front of a real audience. | Pending |
@@ -99,8 +99,8 @@ exists, the contract is explicit, and verification is objective.
 - **Completed** — all tasks verified, `build-state.json` updated, awaiting or
   having received the human's single batch commit
 
-**B-1 through B-19 are complete. M4 through M8 are closed, and M9 is under
-way.** B-12's
+**B-1 through B-20 are complete. M4 through M9 are closed, and only M10
+(launch) remains.** B-12's
 audit found the admin dashboard had been answering HTTP 500 for every admin
 since T-052 and filed the one-word correction as T-105 rather than editing the
 `done` T-052 card; B-12a landed it, re-verified live against `shifa_dev` and
@@ -261,6 +261,55 @@ before translating digits, silently dropping the leading zero (`২০২৬-৮
 instead of `২০২৬-০৮-২১`) — caught by actually reading the dry-run output
 rather than only trusting the query logic, fixed by translating the padded
 string directly.
+
+**B-20 lands T-123 and closes M9.** The Opus call was right, and not for the
+reason the table gave. The risky part was never writing the YAML; it was that
+two of this file's defaults are quietly destructive and only visible if you go
+looking for them.
+
+The first: `backup.yml`, `purge.yml` and `keepalive.yml` all read a
+*repository-level* `DATABASE_URL` that points at **production**. The obvious
+way to write a staging job is `secrets.DATABASE_URL` plus a `staging`
+environment that overrides it — and then a `staging` environment merely
+*missing* that secret silently inherits production, and "migrate staging"
+migrates, scrubs and anonymizes the live database. The fix is a name with no
+fallback (`STAGING_DATABASE_URL`), plus a first step that hashes both
+connection strings and refuses to run if they match. Worth generalising: **when
+a repository-level secret is dangerous, an environment-level override is not a
+safety mechanism, because the failure mode is the override being absent.**
+
+The second: GitHub evaluates environment protection rules **per job, not per
+run**. The natural decomposition — `production-migrate`, `production-deploy`,
+`production-smoke`, each naming `environment: production` — turns §A-14.2's one
+manual approval into three prompts, and a reviewer who has already approved
+once clicks through the rest. Merged into a single `production` job, and
+verified by parsing the finished workflow that exactly one job names the
+environment. A gate that annoys its approver stops being a gate.
+
+**The verification finding is the one worth carrying forward.** Everything a
+runner would do was rehearsed locally against the real PostgreSQL 18 and a real
+`next start` build — and the harness extracts the SQL and the smoke scripts
+*from `deploy.yml` itself* rather than retyping them, so the test cannot drift
+from what ships. That paid immediately: running the smoke suite for real caught
+that `check /no-such-page-exists 404` asserts something the app does not do
+(T-090's documented streaming defect serves the 404 page under a 200), which
+would have painted **every future deployment red** for a defect this card
+neither owns nor can fix. No amount of re-reading the YAML would have found it.
+The anonymization got the same treatment, including the negative test that
+matters most — the assertion counts 8 unscrubbed rows *before* the scrub, so a
+green "0 rows" afterwards means something. B-13's "assume a browser is
+available" update has a sibling now: **assume the database and a production
+build are available, and rehearse against them; a workflow reviewed only by
+reading is a workflow whose first real run is its first test.**
+
+The one place this batch deliberately did not tighten: `CONTENT_GATES_STRICT`
+is a variable, not a hard-coded `1`, even though `ci.yml`'s comment names this
+card as the thing that sets it. Hard-coding it today fails the staging job on
+the 16 known scaffold placeholders, and since production `needs: [staging]`
+that blocks every deployment — including the ones needed to load the content
+that would make it pass. Strictness that arrives before the work it gates is
+indistinguishable from a broken pipeline. It is scheduled instead, as T-130's
+last step.
 
 ### Two findings from B-1 that change how later batches should be run
 

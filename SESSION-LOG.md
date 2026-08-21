@@ -3587,3 +3587,174 @@ available) and a real recipient inbox.
 All 839 Vitest tests pass after this batch (up from 820 before it — T-122's
 19 new cases), `tsc --noEmit` and `eslint` are clean on every file this batch
 touched, and both new workflow YAML files parse cleanly under `js-yaml`.
+
+---
+
+## 2026-08-21 — B-20: T-123
+
+**by:** T-123 · **next:** B-21 (T-130 — content load from the A-3.1 checklist)
+
+`progress.done` is 77 / 80. **M9 is closed** — T-120, T-121, T-122, T-123 and
+T-124 are all `done`, so `milestones.M9.done` is now `true`. Only M10 remains,
+and its first card is the content load.
+
+SOLO batch by design: live infrastructure and real secrets.
+
+### T-123 · Staging & production environments, migration pipeline
+
+`.github/workflows/deploy.yml` (new), `docs/RUNBOOK.md` (new "Deployment
+pipeline" section, additive — the file's own header already named this card as
+the next one to extend it). Exactly the card's two Files, no others.
+
+**Shape.** Three jobs: `staging` → `production` → `tag`. The trigger is
+`workflow_run` on **CI** completing, filtered to `conclusion == 'success'` and
+`head_branch == 'main'`, rather than `push` — §A-14.2's ladder puts deployment
+*after* the PR gates, and a `push` trigger would race `ci.yml` instead of
+following it. The staging job runs migrate → anonymize → assert-anonymized →
+content gates → deploy → wait → smoke; the production job runs guard → migrate
+→ deploy → wait → smoke; `tag` pushes `deploy-<UTC>-<sha7>`.
+
+**The Contract — "production migrations never run without a green staging run
+first" — is enforced three ways**, because any one of them is a single edit
+from being wrong: `needs: [staging]`; an explicit first-step re-assertion of
+`needs.staging.result == 'success'` (which an added `if: always()` cannot
+weaken); and both jobs running in one workflow run against one `ref`, so the
+green staging run is necessarily a run of *the same commit*.
+
+**The manual approval is one job, deliberately.** First cut split production
+into `production-migrate` / `production-deploy` / `production-smoke`, each
+naming `environment: production`. That is wrong: GitHub evaluates environment
+protection rules **per job, not per run**, so it would have demanded three
+separate approvals for one release — and an approver who has clicked once
+reads the later prompts as duplicates and clicks through, which is how a gate
+becomes a formality. Merged into a single `production` job; verified by parsing
+the workflow that exactly one job now names `environment: production`. `tag`
+stays separate because it needs `contents: write`, which nothing holding
+production credentials should also carry.
+
+**The most destructive mistake this file could make, and the guard for it.**
+`backup.yml`, `purge.yml` and `keepalive.yml` all read a *repository-level*
+`DATABASE_URL` that points at production. Had the staging job also read
+`secrets.DATABASE_URL` and relied on the `staging` environment to override it,
+a `staging` environment merely *missing* that secret would fall back to the
+production value — and "migrate staging" would migrate, scrub and anonymize
+**production**. So staging reads `STAGING_DATABASE_URL`, a name with no
+repository-level fallback: unset means empty and fails closed. The first step
+also SHA-256s both connection strings and aborts if they match, catching the
+other half (the secret exists, but production was pasted into it). Neither
+value is ever printed — only the comparison's result.
+
+**Anonymization runs on every staging deployment, not only after a refresh.**
+Tying the scrub to the restore procedure makes it a step a tired operator skips
+at 3am; running it unconditionally makes it an invariant. §A-14.1's two named
+sets (`contact_messages`, `faculty_private`) are scrubbed, NULLs preserved as
+NULLs (staging is where the admin UI is accepted, and "empty" renders
+differently from "has a value"), replacement addresses under RFC 2606's
+`.invalid` so none can receive mail. Four further tables go **beyond** the
+card's wording and are flagged as such in the file rather than smuggled in:
+`sessions`, `password_reset_tokens`, `login_attempts` and `users.password_hash`
+are not "personal fields" but *credential* material — a production dump carries
+live session tokens, unspent reset tokens and real bcrypt hashes, and a copy
+that keeps them is not anonymized, it is production access with a different
+hostname. Hashes become `!staging-locked`, which no password can verify
+against; `src/lib/auth.ts`'s `verifyPassword` already returns false for a
+malformed hash rather than throwing ("a corrupt row must fail closed, not
+500"), so this locks the accounts without putting a 500 in the login path. The
+whole block is `--single-transaction` + `ON_ERROR_STOP=1`: a half-applied scrub
+is a staging database still holding real parent contact details.
+
+**`ci.yml`'s hand-off was honoured.** Its comment on the non-strict gate run
+reads "T-130 and the deploy pipeline (T-123) are what set `GATES_STRICT=1`", so
+the staging job runs `tests/gates` — pointed at *staging*, not production,
+because the suite is not read-only (`harness.ts` starts a `next dev` server,
+seeds each violation, and drops CHECK constraints inside a doomed transaction
+to prove the sweep is not vacuous; rolled back or not, that does not belong
+against the live database). Strictness comes from a `CONTENT_GATES_STRICT`
+variable rather than being hard-coded to `1`: hard-coding it today would fail
+the job permanently on the 16 seed-scaffold `page_translations.meta_title`
+placeholders, and since production `needs: [staging]` that would block every
+deployment of every code change — including the ones needed to load the
+content. Unset, the gate still fails on any *authored* placeholder. Setting it
+to `1` is documented as the last step of T-130.
+
+**Deployment is provider-agnostic on purpose.** ARCHITECTURE.md fixes the
+pipeline's shape but names no host, and A-3.1 row 24 (hosting account owners)
+is still unassigned, so naming one here would be inventing a fact about the
+school. Each environment supplies a `POST`-able deploy hook URL (Vercel,
+Netlify, Render, Railway and Coolify all expose one); an unset hook fails the
+job on a named message rather than reporting a deploy that never happened.
+
+### Verified this session
+
+The card's Verify is "a full staging deploy succeeds; production is gated on
+approval". No GitHub Actions runner, no staging host and no production host
+exist here, so the parts that *could* be run for real were, against the live
+PostgreSQL 18 on 5432 and a real production build:
+
+- **Migrate STAGING, for real.** A scratch `shifa_t123_rehearsal` database
+  created empty; all 15 migrations applied by the card's own
+  `prisma migrate deploy`; seeded.
+- **The anonymization, for real, from the literal workflow text.** A harness
+  parses `deploy.yml`, extracts the `Anonymize STAGING` heredoc and the
+  `Assert STAGING really is anonymized` query, and runs *those strings* — the
+  test cannot drift from what ships. Loaded with production-shaped data
+  (Bangla and English messages, one row with every optional field populated and
+  one with every optional field NULL, mixed-NULL `faculty_private`, a live
+  session, an unspent reset token, two login attempts, a real bcrypt hash):
+  **negative test** — the assertion counted 8 unscrubbed rows *before* the
+  scrub, so it is not vacuous; **positive test** — 0 after; **idempotency** —
+  still 0 after a second run; plus 11 property checks (NULLs preserved,
+  originals gone, every hash the sentinel, `bcrypt.compare` against the
+  sentinel returns false without throwing). Reproduced end-to-end on a
+  freshly-recreated database. All passed.
+- **The smoke suite, for real, against `next start`.** Both copies extracted
+  from the workflow and run against a production build on 127.0.0.1:3100:
+  15 checks green — ADR-005's route shape (`/`, `/en`, `/notices`,
+  `/en/notices`, `/contact`, `/en/contact`, `/faculty`, `/admission`, `/login`
+  200; `/bn`, `/bn/notices` 404), `/admin` → `307 /login?next=%2Fadmin`,
+  `lang="bn"` / `lang="en"` in the rendered documents. Negative-tested against
+  a dead port: every check reports failure.
+- **Both branches of the content gate, for real.** Non-strict: 6 files,
+  57/57 pass. `GATES_STRICT=1`: fails on exactly the 16 scaffold
+  `page_translations.meta_title` rows — proving the switch removes the
+  allowance and that flipping it before T-130 would (correctly) block release.
+- **Static checks.** The workflow parses as YAML; all 19 `run:` blocks pass
+  `bash -n`; exactly one job names `environment: production`.
+
+**Two real defects the smoke run caught**, both in the first cut of this card's
+own work rather than in the app:
+
+1. `check /no-such-page-exists 404` was wrong. An unmatched public URL is
+   served with **HTTP 200** — T-090's own file header records this, measured
+   both ways: `[locale]/loading.tsx` makes the route streamable, so Next
+   commits `200 OK` before `notFound()` throws. Shipping that assertion would
+   have painted every future deployment red for a defect this pipeline neither
+   owns nor can fix. Replaced with an assertion on the *page* ("Page not
+   found" in the body), which survives the eventual fix. `/bn` and
+   `/bn/notices` still assert a true 404 — those are refused by the layout's
+   locale guard before the stream starts, so ADR-005's rule stays covered.
+2. The `[[CONTENT REQUIRED]]` smoke check failed on staging, correctly — the
+   seeded scaffold really is serving the marker in `<title>`/`og:title`. Made
+   a `::warning::` on staging and kept a hard failure on production, the only
+   difference between the two copies. Staging's §A-14.1 job is *acceptance*,
+   which is precisely where unfinished content is looked at; failing there
+   would have deadlocked the pipeline until T-130 for the same reason
+   `ci.yml`'s non-strict gate exists.
+
+### What is NOT verified
+
+- **No run against real GitHub Actions.** Trigger filtering, environment
+  secret/variable resolution, the approval hold, and the `tag` push are
+  asserted by construction and by parsing, not observed. The first real
+  dispatch is the operator's, and `docs/RUNBOOK.md` gives a safe rehearsal
+  order that exercises the staging half while production waits on approval.
+- **`psql` was not the executor.** No `psql` on this machine, so the extracted
+  SQL ran through the Prisma driver against real PostgreSQL. The SQL text is
+  proven; the `psql` invocation wrapping it (flags, heredoc) is not.
+- **No deploy hook was ever POSTed**, and no staging or production host exists
+  to receive one.
+- **The pipeline cannot prove this exact commit went live.** A deploy hook is
+  fire-and-forget: "deployed" is inferred from the origin answering 200 again.
+  A hook that 202s and then fails to build looks like a slow deploy followed by
+  the *old* version passing smoke. Recorded in the RUNBOOK's "What this
+  pipeline does not prove", along with the absence of a `migrate down`.

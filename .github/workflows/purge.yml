@@ -1,0 +1,80 @@
+# Shifa International School — daily retention purge (T-121)
+#
+# ARCHITECTURE.md §A-16.1 / §A-16.2 / §A-10.4:
+#
+#   contact_messages | purged 12 months after submission
+#   activity_logs    | purged 24 months after the event
+#   media_assets     | storage objects purged 30 days after a soft delete,
+#                       and only when nothing references the asset any more
+#
+# `scripts/purge.ts` (this card's own file) does the actual work. This
+# workflow only schedules it and supplies the secrets a real run needs — the
+# same split `backup.yml` (T-120) uses, and for the same reason: `ci.yml`
+# never touches the real database or the real bucket, only disposable ones.
+#
+# Runs 30 minutes after `backup.yml` (T-120) — not because either job depends
+# on the other's output, but so that whatever a purge is about to remove was
+# already captured in that night's backup.
+
+name: Daily retention purge
+
+on:
+  # 03:30 Asia/Dhaka (UTC+6) = 21:30 UTC the previous day.
+  schedule:
+    - cron: '30 21 * * *'
+  # Manual runs. `dry_run` defaults to true — this job performs irreversible
+  # deletes (this card's own Contract), so a human clicking "Run workflow"
+  # must opt into a live run explicitly.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (list what would be purged, delete nothing)'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+# A purge that overlaps its own next run is a purge racing itself over the
+# same rows — never run two at once.
+concurrency:
+  group: purge
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    name: Purge overdue rows and orphaned media
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Run purge job
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STORAGE_ENDPOINT: ${{ secrets.STORAGE_ENDPOINT }}
+          STORAGE_REGION: ${{ secrets.STORAGE_REGION }}
+          STORAGE_ACCESS_KEY_ID: ${{ secrets.STORAGE_ACCESS_KEY_ID }}
+          STORAGE_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_SECRET_ACCESS_KEY }}
+          STORAGE_PUBLIC_BUCKET: ${{ secrets.STORAGE_PUBLIC_BUCKET }}
+          STORAGE_PRIVATE_BUCKET: ${{ secrets.STORAGE_PRIVATE_BUCKET }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.dry_run }}" = "true" ]; then
+            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/purge.ts --dry-run
+          else
+            node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/purge.ts
+          fi

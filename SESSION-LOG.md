@@ -3469,3 +3469,121 @@ the audit-log purge category will fail with SQLSTATE `42501`
 (insufficient_privilege) — caught, reported by name, and the other two
 categories still complete. Documented in the script's own header rather than
 discovered later as a silent gap.
+
+## 2026-08-21 — B-19: T-122, T-124
+
+**by:** T-124 · **next:** B-20 (T-123 — staging & production environments,
+migration pipeline)
+
+`progress.done` is 76 / 80. Both cards inherit B-18's finding about
+`.github/workflows/*.yml` invoking `node scripts/*.ts` directly — nothing
+either card's code imports may carry an `@/*` specifier anywhere in its
+dependency graph, confirmed again this session — and both answer it in ways
+worth recording because neither repeats B-18's own answer exactly.
+
+### T-122 · Uptime, error tracking, auth anomaly alerts
+
+`src/lib/monitoring.ts`, `src/lib/monitoring.test.ts`,
+`.github/workflows/keepalive.yml`, `docs/RUNBOOK.md` (new "Monitoring &
+alerting" section, additive — the file's own header already named this card
+as the next one to extend it).
+
+Uptime itself is not code: §A-15 names it an *external* monitor, so
+`docs/RUNBOOK.md` documents pointing a free-tier service (UptimeRobot,
+Better Stack) at `NEXT_PUBLIC_SITE_URL` on a 5-minute interval instead. The
+other three §A-15 rows — Sentry, the auth-anomaly query, and a backup/purge
+failure alert — are `src/lib/monitoring.ts`, one file written to work both
+as an importable library and, via the same `invokedDirectly` CLI guard
+`backup.ts`/`purge.ts` use, as the thing `keepalive.yml` runs directly on
+three triggers: a 6-hourly DB keepalive, a 15-minute auth-anomaly sweep, and
+a `workflow_run` listener on `Nightly backup`/`Daily retention purge`
+completing with `conclusion: failure` (neither of those two workflows writes
+a DB row on failure, by their own cards' design, so a run-completion trigger
+is the only signal reachable without editing a `done` file). Sentry is a
+hand-rolled envelope-API client (DSN parsing, a two-line-header + payload
+POST, `X-Sentry-Auth`) rather than `@sentry/node` — `package.json` outside
+the Files list, the same constraint `storage.ts` and `mail.ts` name in their
+own headers. The alert channel is a generic `POST { text }` webhook
+(Slack/Discord-compatible), always logging a `::error::`/console alert first
+regardless of whether one is configured — the same "fail loudly" contract
+`backup.ts`'s header set before any paging channel existed to make good on
+it.
+
+**Verified this session:** 19 unit tests (DSN parsing incl. a self-hosted
+install-path prefix, envelope shape, the auth header, the no-DSN
+degrade-to-console path, the auth-anomaly query's own SQL text) — all green.
+`--keepalive` and `--check-auth-anomalies` run for real against live
+`shifa_dev` (`SELECT 1` succeeds; the sweep correctly reports nothing over
+threshold). The auth-anomaly SQL itself proved positive too: 25 synthetic
+failed logins for one username, inserted and detected inside a transaction
+that was then rolled back, leaving zero rows behind. The alert webhook was
+proved end-to-end against a real local HTTP server — POST received, JSON
+payload decoded, `CRITICAL`/`WARNING` and the message text both present —
+via `--webhook-self-test`. `--sentry-self-test` and `--alert-job-failure`
+correctly refuse to run without their required secret rather than silently
+skipping. **Not verified:** delivery to a real Sentry project — no account
+exists in this environment; `--sentry-self-test` is exactly the command an
+operator with a real `SENTRY_DSN` runs once to close that gap, and the
+workflow's manual `self_test` dispatch input runs both self-tests together.
+Also recorded rather than silently left: nothing in the running application
+calls `captureException` yet — every call site is either a `done` card's
+file or a not-yet-created `instrumentation.ts`, both outside this card's
+Files list, the same boundary T-105/T-115/T-116/T-117 hit before it.
+
+### T-124 · Weekly content-freshness report
+
+`scripts/freshness-report.ts`, `.github/workflows/freshness.yml`.
+
+Four independent queries — notices published in the last 30 days, unread
+messages over 7 days old (both using the literal thresholds T-052's
+`DashboardWidgets.tsx` already exports, redeclared here since a `.tsx` file
+cannot be imported into a plain-`node` script either), sections still
+holding a placeholder, and `site_stats` rows with no `verified_on` — rendered
+as one Bangla-only plaintext report (this card's own Contract: "Bangla,
+since the recipient is the principal") and mailed over a trimmed, standalone
+copy of `mail.ts`'s SMTP transport (same reason as every prior standalone
+script: `mail.ts` imports `@/lib/env`).
+
+The placeholder signal reuses T-113's own schema-discovery sweep
+(`tests/gates/placeholder-sweep.ts`) rather than a second, narrower list —
+tried as a direct relative import first, which fails the identical
+`TS5097`/Node-loader contradiction `backup.ts`'s header already documents
+for `audit.ts`, so `readSchemaMap` is copied here field-for-field instead
+(a smaller `findPlaceholderLeaks` that only counts, since a weekly summary
+line has no use for T-113's own row-key/value detail). This is strictly more
+complete than `DashboardWidgets.tsx`'s own `PLACEHOLDER_TABLES`, which that
+file's own comment already calls partial — and running it for real against
+`shifa_dev` found exactly the 16 seed-scaffold `page_translations.meta_title`
+rows T-113's suite already tracks, table-for-table confirmation that the two
+sweeps still agree. "Unverified statistics" turns out to only ever be able
+to find *inactive* rows — `ck_stat_verified` (migration 0005) already
+refuses an active one with no `verified_on` — which is exactly the "going
+stale quietly" case §A-15's own sentence is about: a statistic someone
+started and never finished verifying.
+
+The recipient's address is a new operational secret,
+`FRESHNESS_REPORT_RECIPIENT`, read directly from `process.env` rather than
+invented — `docs/RUNBOOK.md` is not in this card's Files list (unlike T-120's
+and T-122's), so the secret is documented in `freshness.yml`'s own header
+instead, the same choice `backup.yml`/`purge.yml` made before that file
+existed to hold anything.
+
+**Verified this session, all for real rather than mocked:** `--dry-run`
+against live `shifa_dev` (see the placeholder-count match above); the SMTP
+conversation itself against a throwaway local TCP server standing in for a
+relay — EHLO → MAIL FROM → RCPT TO → DATA, base64 body, decoded back on the
+receiving end to confirm the Bangla report round-trips correctly. That probe
+caught a real bug before it shipped: the first cut of the Bangla-digit date
+formatter passed an already-zero-padded month/day through `Number()` before
+translating digits, silently dropping the leading zero
+(`২০২৬-৮-২১` instead of `২০২৬-০৮-২১`) — visible only by actually reading
+the rendered output, not from the query logic, which was correct throughout.
+Fixed by translating the padded string directly. **Not verified:** delivery
+through a real production SMTP relay (only a synthetic local one was
+available) and a real recipient inbox.
+
+### Full-suite check
+
+All 839 Vitest tests pass after this batch (up from 820 before it — T-122's
+19 new cases), `tsc --noEmit` and `eslint` are clean on every file this batch
+touched, and both new workflow YAML files parse cleanly under `js-yaml`.

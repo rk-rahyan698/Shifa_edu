@@ -61,8 +61,8 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | **B-15** | T-112 ✅ | E2E golden paths, both locales, mobile | **Sonnet** | Medium | Low-Medium | Fiddly but well-defined — the paths are named in the card. | **Completed** |
 | **B-16** | T-113 ✅| Content & ethics gates | **Opus** | High | High | The last thing standing between `[[CONTENT REQUIRED — DO NOT PUBLISH]]`, unconsented faces, and unverified statistics reaching a live school site. Leakage detection is the subtle part. | **Completed** |
 | **B-17** | T-114 ✅ | CI performance, bundle & a11y budgets | **Sonnet** | Medium | Low | Threshold and pipeline configuration against budgets already set in the architecture. | **Completed** |
-| **B-18** | T-120, T-121 | Nightly encrypted backup; retention purge | **Opus** | High | High | One job encrypts, the other **permanently deletes** — messages at 12 months, audit at 24. An off-by-one in a retention window destroys records nobody knows are gone. | Pending |
-| **B-19** | T-122, T-124 | Uptime/error/auth alerts; freshness report | **Sonnet** | Medium | Low-Medium | Integration and configuration against third-party services, with a report reading from what T-122 collects. | Pending |
+| **B-18** | T-120 ✅, T-121 ✅| Nightly encrypted backup; retention purge | **Opus** | High | High | One job encrypts, the other **permanently deletes** — messages at 12 months, audit at 24. An off-by-one in a retention window destroys records nobody knows are gone. | **Completed** |
+| **B-19** | T-122 ✅, T-124 ✅ | Uptime/error/auth alerts; freshness report | **Sonnet** | Medium | Low-Medium | Integration and configuration against third-party services, with a report reading from what T-122 collects. | **Completed** |
 | **B-20** | T-123 | Staging & production envs, migration pipeline | **Opus** | High | High | Live infrastructure and real secrets. A migration pipeline that is wrong is discovered in production. | Pending |
 | **B-21** | T-130 | Content load from the A-3.1 checklist | **Sonnet** | Low-Medium | Medium | Structured data entry against a signed-off checklist. Judgement is the human's; the constraint is that no placeholder survives. | Pending |
 | **B-22** | T-131 | Human gates: security, a11y, restore, walkthrough | **Human only** | — | High | Not an AI task under any model. An AI may set this to `awaiting_human` and never to `done`. See `phase_gates.human_gates`. | Pending |
@@ -99,7 +99,8 @@ exists, the contract is explicit, and verification is objective.
 - **Completed** — all tasks verified, `build-state.json` updated, awaiting or
   having received the human's single batch commit
 
-**B-1 through B-17 are complete. M4 through M8 are all closed.** B-12's
+**B-1 through B-19 are complete. M4 through M8 are closed, and M9 is under
+way.** B-12's
 audit found the admin dashboard had been answering HTTP 500 for every admin
 since T-052 and filed the one-word correction as T-105 rather than editing the
 `done` T-052 card; B-12a landed it, re-verified live against `shifa_dev` and
@@ -202,6 +203,64 @@ failing. A sixth item, query-count assertions, has no test anywhere in the
 repo to wire — building one needs source outside `.github/workflows/ci.yml`,
 `lighthouserc.json` and `.size-limit.json`, so it is deferred the same way.
 Full evidence in SESSION-LOG.md.
+
+**B-18 landed T-120 and T-121, opening M9.** Both cards write to real
+infrastructure this machine does not have (a production Postgres, an
+off-site bucket), so most of the session went into a constraint neither card
+saw coming until it ran: `.github/workflows/*.yml` invokes `node scripts/*.ts`
+directly, with no bundler, so nothing either script imports may carry this
+repo's `@/*` alias anywhere in its dependency graph — `tsc` sees nothing
+wrong (the alias resolves fine at type-check time), so the gap is invisible
+until the script actually runs and Node's loader throws
+`ERR_MODULE_NOT_FOUND`. Both scripts ended up fully standalone: their own
+`PrismaClient`, their own trimmed SigV4 client, their own `activity_logs`
+insert in `audit.ts`'s `SYSTEM_ACTOR` shape — `prisma/seed.ts`'s and
+`check-i18n-parity.ts`'s independence turned out to be the general rule, not
+an exception. `classifyRetention` (T-120's 7-daily/4-weekly/3-monthly picker)
+and the AES-256-GCM round trip were proved directly; T-121's `information_schema`-driven
+`media_assets` reference discovery matched `read.ts`'s hand-maintained
+18-row list exactly, table for table, against live `shifa_dev`. Not
+verified: `pg_dump` and the real S3 PUT/GET/DELETE calls, since neither tool
+nor bucket exists on this machine.
+
+**B-19 lands T-122 and T-124, unblocking B-20.** The same `@/*`-free
+constraint B-18 found governs both cards again, and `src/lib/monitoring.ts`
+answers it differently from B-18's two scripts: rather than a second
+`scripts/*.ts` file duplicating it, the module is written to be both an
+importable library (`captureException` etc., for a future task to wire into
+a call site) and a `node`-invokable CLI in one file, so
+`.github/workflows/keepalive.yml` can run it directly on three schedules
+(DB keepalive, an auth-anomaly sweep, and a `workflow_run` listener that
+pages the owner when `backup.yml` or `purge.yml` finishes red). Sentry and
+the alert webhook are both hand-rolled HTTP clients — no `@sentry/node`,
+`package.json` being outside the card's Files list same as every prior
+standalone script — and both were proved for real rather than only against
+a mock: the webhook path against a local HTTP server receiving and decoding
+the actual alert payload, and the auth-anomaly SQL itself against `shifa_dev`
+inside a rolled-back transaction (25 synthetic failed logins for one
+username, correctly detected, correctly gone afterwards). No live Sentry
+account exists in this environment, so `captureException`/`sendToSentry` are
+proven by 19 passing unit tests (DSN parsing, envelope shape, the auth
+header, the no-DSN degrade path) rather than a real ingest call — the
+`--sentry-self-test` CLI flag exists specifically so a human with a real DSN
+can close that gap in one manual workflow run.
+
+T-124's freshness report reuses T-113's placeholder sweep rather than
+re-deriving a narrower one — copied, not imported, for the identical
+`@/*`/`TS5097` reason B-18 already hit, but kept aligned field-for-field with
+`readSchemaMap` so the CI gate and the weekly email cannot quietly disagree
+about what counts as a placeholder. Run for real against `shifa_dev`, it
+found exactly the 16 known seed-scaffold `page_translations.meta_title`
+placeholders T-113's own suite already tracks — independent confirmation
+that the two sweeps agree. The full SMTP conversation (EHLO → MAIL FROM →
+RCPT TO → DATA, base64 body) was proved against a throwaway local TCP
+server: the Bangla report body round-tripped through base64 and decoded back
+correctly, byte for byte. A caught bug worth recording: the first cut of the
+Bangla-digit date formatter routed a zero-padded month/day through `Number()`
+before translating digits, silently dropping the leading zero (`২০২৬-৮-২১`
+instead of `২০২৬-০৮-২১`) — caught by actually reading the dry-run output
+rather than only trusting the query logic, fixed by translating the padded
+string directly.
 
 ### Two findings from B-1 that change how later batches should be run
 

@@ -1,0 +1,146 @@
+# Shifa International School — DB keepalive, auth anomaly check, backup/purge
+# failure alert (T-122)
+#
+# ARCHITECTURE.md §A-15:
+#
+#   Uptime         | External monitor, 5-min interval | 2 consecutive failures -> owner
+#   Errors         | Sentry (free tier)                 | New error type, or >10/hour
+#   Auth anomalies | login_attempts query                | >20 failures/hour for one username
+#   Backups        | Job status                          | Any failure -> immediate
+#
+# Uptime is NOT a job in this file — §A-15 names it an external monitor, and
+# `docs/RUNBOOK.md`'s "Monitoring & alerting" section (this card's own file)
+# is where an operator sets one up. `src/lib/monitoring.ts` (this card's own
+# file) does the other three, and this workflow is only the schedule and the
+# secrets — the same split `backup.yml` (T-120) and `purge.yml` (T-121) use.
+#
+# Three independent jobs, one file, because they are the whole of this card's
+# observability surface and the Files list names exactly one workflow:
+#
+#   keepalive           | schedule | pings the database so a pausing free
+#                        |          | tier does not drop it for inactivity
+#                        |          | (§A-14.3's "free-tier risk" row)
+#   auth-anomaly-check   | schedule | pages the owner when a username crosses
+#                        |          | 20 failed logins in the trailing hour
+#   job-failure-alert    | workflow_run | fires when "Nightly backup" (T-120)
+#                        |          | or "Daily retention purge" (T-121)
+#                        |          | finishes with conclusion=failure —
+#                        |          | those two workflows write no DB row on
+#                        |          | failure (see their own headers), so a
+#                        |          | run-completion trigger is the only
+#                        |          | signal available without editing their
+#                        |          | `done` files
+#
+# A fourth, manual-only job proves the two alert channels actually deliver —
+# the card's Verify line, "A forced error reaches Sentry; a simulated outage
+# alerts" — without waiting for a real incident.
+
+name: Monitoring
+
+on:
+  schedule:
+    # DB keepalive: every 6 hours. Cheap (`SELECT 1`), and frequent enough to
+    # stay well inside any free-tier host's inactivity window.
+    - cron: '0 */6 * * *'
+    # Auth anomaly check: every 15 minutes — the same window §A-9.2 already
+    # uses for a login lockout, so a real attack is caught within one window
+    # of it happening rather than up to an hour later.
+    - cron: '*/15 * * * *'
+  workflow_run:
+    workflows: ['Nightly backup', 'Daily retention purge']
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      self_test:
+        description: 'Run the Sentry + webhook self-test instead of a scheduled check'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  keepalive:
+    name: DB keepalive
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only the 6-hourly cron fires this job — the 15-min cron and the other
+    # triggers must not also ping the database under this job's name.
+    if: |
+      github.event_name == 'schedule' && github.event.schedule == '0 */6 * * *'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm install
+      - run: npx prisma generate
+      - name: Ping the database
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/lib/monitoring.ts --keepalive
+
+  auth-anomaly-check:
+    name: Auth anomaly check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: |
+      github.event_name == 'schedule' && github.event.schedule == '*/15 * * * *'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm install
+      - run: npx prisma generate
+      - name: Check login_attempts for >20 failures/hour on one username
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/lib/monitoring.ts --check-auth-anomalies
+
+  job-failure-alert:
+    name: Alert on a failed backup or purge run
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm install
+      - run: npx prisma generate
+      - name: Page the owner
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: |
+          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/lib/monitoring.ts \
+            --alert-job-failure "${{ github.event.workflow_run.name }}"
+
+  self-test:
+    name: Prove Sentry and the alert webhook actually deliver
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name == 'workflow_dispatch' && inputs.self_test == true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm install
+      - run: npx prisma generate
+      - name: Sentry self-test
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/lib/monitoring.ts --sentry-self-test
+      - name: Webhook self-test
+        env:
+          ALERT_WEBHOOK_URL: ${{ secrets.ALERT_WEBHOOK_URL }}
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON src/lib/monitoring.ts --webhook-self-test

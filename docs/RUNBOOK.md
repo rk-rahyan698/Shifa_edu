@@ -5,10 +5,9 @@ needs are, and the exact steps to recover when something breaks. It assumes no
 prior knowledge of how the system was built — only that Postgres, `node` and a
 terminal are available.
 
-Sections are added by the task that builds the thing they document (T-120
-below; T-122's monitoring/alerting and T-123's deployment pipeline add their
-own sections later) — this file only grows, never gets rewritten from
-scratch.
+Sections are added by the task that builds the thing they document (T-120 and
+T-122 below; T-123's deployment pipeline adds its own section later) — this
+file only grows, never gets rewritten from scratch.
 
 ---
 
@@ -129,3 +128,86 @@ rehearsal is a **human gate** (T-131, ARCHITECTURE.md's phase gates): no
 automated job performs it, and no AI session may mark it done. If it has not
 happened this quarter, that is the first thing to check before trusting any
 backup in an actual emergency.
+
+---
+
+## Monitoring & alerting (T-122)
+
+ARCHITECTURE.md §A-15 in one table:
+
+| Signal | Tool | Alert |
+|---|---|---|
+| Uptime | External monitor, 5-min interval | 2 consecutive failures → owner |
+| Errors | Sentry (free tier) | New error type, or >10/hour |
+| Auth anomalies | `login_attempts` query | >20 failures/hour for one username |
+| Backups | Job status | Any failure → immediate |
+
+### Uptime — set this up outside this repository
+
+§A-15 names uptime an **external** monitor, not application code, so there is
+no workflow or script for it. Pick any monitor with a free tier that supports
+a 5-minute interval and a "2 consecutive failures" alert rule — UptimeRobot
+and Better Stack both do — and point it at:
+
+- **URL:** `NEXT_PUBLIC_SITE_URL` (the Bangla homepage, `/`)
+- **Interval:** 5 minutes
+- **Alert after:** 2 consecutive failures, to the owner (§R9's named deputy,
+  not only the primary — see A-14.3's bus-factor row)
+
+There is nothing to verify from inside this repository once it is set up —
+the monitor's own dashboard is the record.
+
+### Errors, auth anomalies and backup/purge failures — `src/lib/monitoring.ts` and `.github/workflows/keepalive.yml`
+
+Despite its name (kept from the job it started as), `keepalive.yml` now runs
+four jobs on three schedules:
+
+| Job | Trigger | What it does |
+|---|---|---|
+| `keepalive` | every 6 hours | `SELECT 1` against the database — §A-14.3's free-tier pause risk |
+| `auth-anomaly-check` | every 15 minutes | Queries `login_attempts` for any username with >20 failures in the trailing hour; pages the owner and reports to Sentry for each one found |
+| `job-failure-alert` | on `Nightly backup` / `Daily retention purge` completing with `conclusion: failure` | Pages the owner naming which job failed |
+| `self-test` | manual (`workflow_dispatch`, "self_test" checkbox) | Sends one real event through each channel — see "Testing this" below |
+
+All four run `src/lib/monitoring.ts` (never a separate script — its own
+header explains why one file plays both roles: an importable library and a
+`node`-invokable CLI). `--check-auth-anomalies` and `--alert-job-failure`
+exit non-zero when they page the owner, so the run itself shows red in the
+Actions tab in addition to whatever channel is configured below.
+
+### The secrets these jobs use
+
+Set as **repository secrets** (Settings → Secrets and variables → Actions),
+same as `backup.yml`'s and `purge.yml`'s:
+
+| Secret | What it is |
+|---|---|
+| `DATABASE_URL` | Same production connection string `backup.yml`/`purge.yml` use — `keepalive` and `auth-anomaly-check` both read it |
+| `SENTRY_DSN` | A Sentry project's DSN (`https://<publicKey>@<host>/<projectId>`, or with a self-hosted install path before the project id). Free tier is enough for this scale. **Optional in the sense that its absence does not fail a run** — `monitoring.ts` logs the event to the job's own console instead and moves on — but every event is silently un-paged until it is set, so treat it as required in practice. |
+| `ALERT_WEBHOOK_URL` | Any endpoint that accepts `POST { "text": "..." }` — a Slack or Discord incoming webhook both work as-is; a generic webhook-to-email bridge (e.g. one built on a mail-relay-as-a-service) works too if email is preferred. Same "optional but effectively required" note as `SENTRY_DSN` applies: without it, an alert is logged to the job's console and nothing more. |
+
+### Testing this
+
+Run the workflow manually from the Actions tab (`Monitoring` → "Run
+workflow") with the **"Run the Sentry + webhook self-test"** box checked. It
+sends one real event to Sentry (visible in the project's Issues list, titled
+`T122SelfTest`) and one real message to the alert webhook
+(`T-122 alert channel self-test — safe to ignore.`) — both safe to resolve
+immediately once seen. This is the card's Verify line, "A forced error
+reaches Sentry; a simulated outage alerts," run for real rather than assumed.
+
+To test the auth-anomaly path specifically without waiting 15 minutes for the
+schedule, trigger a `Monitoring` run with `self_test` left unchecked — the
+`auth-anomaly-check` job's own `if` only matches the 15-minute cron, so a
+manual run of that job requires either waiting for the schedule or seeding
+`login_attempts` directly against a non-production database and running
+`node src/lib/monitoring.ts --check-auth-anomalies` locally with
+`DATABASE_URL` pointed at it.
+
+### What this does not cover yet
+
+`captureException` (Sentry) is exported and self-test-proven, but nothing in
+the running application calls it — that requires editing a `catch` block
+inside a `done` card's file, or adding a new `instrumentation.ts`, neither of
+which is in this card's Files list. See `src/lib/monitoring.ts`'s own header
+and `PENDING-COMMIT.md` for the follow-up this leaves for a future task.

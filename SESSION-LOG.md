@@ -3343,3 +3343,129 @@ reach `dockerDesktopLinuxEngine`), so the `services.postgres` container
 mechanics are boilerplate proven by `docker-compose.yml`'s identical
 image/user/db/healthcheck shape rather than executed here. Worth a first-PR
 watch rather than a blind assumption.
+
+## 2026-08-20 — B-18: T-120, T-121
+
+**by:** T-121 · **next:** B-19 (T-122 monitoring/alerts, T-124 freshness report)
+
+`progress.done` is 74 / 80. Both cards write to real infrastructure — a
+production Postgres, an off-site bucket — that this machine does not have, so
+each is verified as far as the sandbox allows and the remaining gap is stated
+rather than assumed. What both cards share, and what most of this session went
+into working out first: `.github/workflows/*.yml` runs `node scripts/*.ts`
+directly, with no bundler and no `tsconfig-paths` loader, so nothing either
+script imports may contain this repo's `@/*` alias anywhere in its own
+dependency graph — confirmed empirically (`ERR_MODULE_NOT_FOUND` at runtime;
+`tsc` sees nothing wrong, because `moduleResolution: "bundler"` resolves the
+alias fine at *type-check* time, which is what makes the gap invisible until
+the script actually runs). `src/lib/prisma.ts` and `src/lib/storage.ts` both
+have one; even `src/lib/audit.ts`, which does not, could not be reached
+either, because Node's ESM loader requires a literal `.ts` extension on a
+relative specifier that `tsc` then refuses (`TS5097`,
+`allowImportingTsExtensions` is off, and `tsconfig.json` is outside both
+cards' Files lists to change). Both scripts are therefore fully standalone —
+own `PrismaClient`, own trimmed SigV4 client, own `activity_logs` insert in
+`@/lib/audit`'s `SYSTEM_ACTOR` shape — the same independence
+`prisma/seed.ts` and `scripts/check-i18n-parity.ts` already chose, for what
+turns out to be the identical reason.
+
+### T-120 · Nightly encrypted backup job
+
+`scripts/backup.ts`, `.github/workflows/backup.yml`, `docs/RUNBOOK.md` (new
+file — this card's to create; T-122 and T-123 add sections to it later,
+additively, per their own Files lines).
+
+pg_dump (`--format=custom`) piped through AES-256-GCM (key = SHA-256 of a new
+`BACKUP_ENCRYPTION_KEY` secret, read directly from `process.env` — deliberately
+not added to `src/lib/env.ts`, which is outside this card's Files list and
+whose schema this standalone script does not go through anyway), uploaded to
+the private bucket under `backups/`. Retention (7 daily + 4 weekly + 3
+monthly, §A-14.3) is computed by a pure function, `classifyRetention`, against
+a self-maintained `backups/manifest.json` — `src/lib/storage.ts` has no
+`listObjects`, adding one is outside this card's Files, so the manifest is
+what lets the job know what already exists without one. Failure is loud
+(non-zero exit, a `::error::` annotation under CI) rather than paged — §A-15's
+actual "backup-failure alert" mechanism is a named T-122 Do-list item this
+card's Files cannot reach.
+
+**Verified in this session:** module resolution (`node scripts/backup.ts
+--dry-run` runs cleanly, no `@/*` errors); config validation fails closed and
+names every missing variable; the AES-256-GCM round trip (`--dry-run`'s own
+self-test, `encrypt` → `decrypt`, plus a second manual round trip against
+`node:crypto` directly, matching `docs/RUNBOOK.md`'s restore snippet
+byte-for-byte); `classifyRetention` against 60 days of synthetic daily
+entries — the 7 most recent are always kept, `keep.length + prune.length`
+always equals the input, no duplicate keys. **Not verified:** `pg_dump` itself
+(not installed on this machine — `pg_dump: command not found`) and the S3
+PUT/GET/DELETE calls against a real bucket (no S3-compatible service reachable
+here; `.env.local`'s `STORAGE_ENDPOINT=http://localhost:9000` is a documented
+placeholder, not a running service). The SigV4 signing code is a trimmed copy
+of `storage.ts`'s already-shipped implementation, not new cryptographic design.
+
+### T-121 · Retention purge job
+
+`scripts/purge.ts`, `.github/workflows/purge.yml`.
+
+Three categories, each independent so one failing does not take the others
+down: `contact_messages` past `purge_after` (12 months), `activity_logs` past
+24 months, and `media_assets` soft-deleted more than 30 days ago and
+referenced by nothing (§A-10.4). The first two use the identical two queries
+`tests/gates/retention.test.ts` (T-113) already asserts the *outcome* of, on
+purpose — the gate and this job cannot silently disagree about what "overdue"
+means.
+
+The third category is the one genuine design departure worth recording.
+`src/lib/modules/media/read.ts`'s `readMediaUsage` answers "does anything hold
+this asset" from `MEDIA_REFERENCES`, a hand-maintained constant its own header
+explains and its own test cross-checks against the live catalogue. This
+script cannot import it (see above), and hand-copying the same 18-row list
+would recreate exactly the drift risk that constant's design was chosen to
+avoid — two lists, one of them silent, both needing to agree forever for a
+*hard, irreversible* delete to stay safe. So `loadMediaReferences()` asks
+Postgres's own `information_schema` which columns hold a foreign key into
+`media_assets(id)` at the start of every run, excluding
+`media_asset_translations`/`media_variants` (the asset's own `ON DELETE
+CASCADE` children, not usages — the same exclusion `read.ts` states for the
+same reason). Verified against the live `shifa_dev` database in this session:
+the introspection query returned **exactly** `read.ts`'s 18 `MEDIA_REFERENCES`
+rows, table for table, column for column — about_content (×2), achievements,
+admission_cycles, class_routines, committee_members, faculty, features,
+gallery_albums, gallery_photos, gallery_videos, hero_slides,
+notice_attachments, page_translations, site_branding (×4).
+
+**Verified live, against the real `shifa_dev` database, inside transactions
+that always rolled back (the same pattern `tests/db/harness.ts`'s
+`withRollbackTx` uses):**
+
+- A 13-months-old contact message and a 25-months-old audit row, inserted and
+  then found by this job's exact two SELECTs — the same positive case
+  `tests/gates/retention.test.ts` proves from the outside.
+- A soft-deleted, 31-day-old `media_assets` row: `isReferenced` correctly
+  answered `false` before anything pointed at it, then `true` immediately
+  after inserting one `hero_slides` row with that asset's id — both the
+  negative and positive case, against real foreign keys, not a mock.
+- `--dry-run` against the real (clean) `shifa_dev` database reports zero
+  candidates in all three categories, correctly — nothing in this dev database
+  is actually overdue.
+- All 57 `tests/gates` and 63 `tests/db` tests still pass after the manual
+  probes above, confirming the rolled-back transactions left no residue.
+
+**Not verified:** the storage-delete half of the media orphan sweep against a
+real bucket, for the same reason as T-120 (no S3-compatible service reachable
+here) — the DELETE-only SigV4 client is a further trimmed copy of the same
+signing code T-120's already exercises.
+
+### Privilege, recorded rather than worked around
+
+Migration 0013's `REVOKE UPDATE, DELETE ON activity_logs FROM PUBLIC` makes
+`activity_logs` append-only for any connection that is neither the table's
+owner nor a superuser — `tests/db/audit-append-only.test.ts`'s own header
+records that this repository's `DATABASE_URL` (local dev, and `ci.yml`'s
+`shifa_ci` service) connects as `postgres`, a superuser, and so bypasses it.
+`scripts/purge.ts` inherits that fact rather than fighting it: it runs as
+whatever `DATABASE_URL` it is given, and if a future production role is
+genuinely neither owner nor superuser (T-123's provisioning, not yet built),
+the audit-log purge category will fail with SQLSTATE `42501`
+(insufficient_privilege) — caught, reported by name, and the other two
+categories still complete. Documented in the script's own header rather than
+discovered later as a silent gap.

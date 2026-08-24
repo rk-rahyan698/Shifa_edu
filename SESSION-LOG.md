@@ -3758,3 +3758,47 @@ own work rather than in the app:
   A hook that 202s and then fails to build looks like a slow deploy followed by
   the *old* version passing smoke. Recorded in the RUNBOOK's "What this
   pipeline does not prove", along with the absence of a `migrate down`.
+
+## 2026-08-21 — B-21 (T-130)
+
+**by:** T-130 · **next:** T-130 (unresolved — blocked)
+
+B-21 was selected per `build-state.json`'s `batches`: `phase_gates.content_gate`
+is satisfied (`T-113` done), `T-123` is done, so T-130 was the only eligible
+task. It was **not built**. T-130's Do list is loading the 24 real items in
+`ARCHITECTURE.md` §A-3.1 — school logo, hero photographs, the principal's
+message and photo with consent, school history, vision, mission, the
+managing committee with consent, achievements, registration numbers, a
+**verified** student/teacher count and pass rate with the date verified, the
+teacher list with written consent, the fee table, admission process and
+documents, class routines, the academic calendar and exam schedule, gallery
+photographs with subject consent, office contact details, a Maps embed URL,
+and social links — through the admin panel. None of it exists in this
+environment: this is a documentation and code repository, not the school
+office. T-130's own Contract is explicit that this is not a gap an AI session
+closes by trying harder: **"An AI may assist with data entry it is given, and
+may originate nothing."** `open_decisions_required_before.content_owners` is
+still `unassigned` — no owner or deputy has supplied a single row of the 24.
+
+The session stopped and asked rather than either fabricating placeholder
+content to force a green batch or silently doing nothing. Given three options
+— block it, have the user supply real content now, or load clearly-fake
+placeholder content to exercise the pipeline — **the user chose to block it**,
+consistent with the project's own `global_rules`: *"If a task cannot be
+completed as written, set status 'blocked', fill blocked_reason, add to
+blocked_on, and STOP."*
+
+`build-state.json` now records T-130 as `blocked`, with a `blocked_reason`
+naming the missing content and the unresolved `content_owners` decision, and
+`blocked_on` is `["T-130"]`. `progress.done` is unchanged at 77/80 — no task
+was completed this session, so nothing moves to `done` and no commit message
+of the form `T-0XX: <title>` applies. `phase_gates` are unaffected: M8's gate
+was already satisfied before this session and nothing here reopens it.
+
+**What unblocks this.** A future session with real answers to some or all of
+the 24 A-3.1 rows — however partial — can resume T-130: load what has been
+supplied, leave the rest unpublished behind the placeholder gate (per T-113
+and per T-130's own Contract: "the site launches smaller and honest"), and
+either close T-130 outright or record precisely which rows remain outstanding.
+Nothing about this session's stop is itself a defect to fix — there is no code
+change T-130 needs; it needs the school's actual material.

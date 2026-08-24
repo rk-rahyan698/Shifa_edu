@@ -64,7 +64,7 @@ M8/M9 precisely because the hard thinking there was already done upstream.
 | **B-18** | T-120 ✅, T-121 ✅| Nightly encrypted backup; retention purge | **Opus** | High | High | One job encrypts, the other **permanently deletes** — messages at 12 months, audit at 24. An off-by-one in a retention window destroys records nobody knows are gone. | **Completed** |
 | **B-19** | T-122 ✅, T-124 ✅ | Uptime/error/auth alerts; freshness report | **Sonnet** | Medium | Low-Medium | Integration and configuration against third-party services, with a report reading from what T-122 collects. | **Completed** |
 | **B-20** | T-123 ✅ | Staging & production envs, migration pipeline | **Opus** | High | High | Live infrastructure and real secrets. A migration pipeline that is wrong is discovered in production. | **Completed** |
-| **B-21** | T-130 | Content load from the A-3.1 checklist | **Sonnet** | Low-Medium | Medium | Structured data entry against a signed-off checklist. Judgement is the human's; the constraint is that no placeholder survives. | Pending |
+| **B-21** | T-130 | Content load from the A-3.1 checklist | **Sonnet** | Low-Medium | Medium | Structured data entry against a signed-off checklist. Judgement is the human's; the constraint is that no placeholder survives. | **Blocked** |
 | **B-22** | T-131 | Human gates: security, a11y, restore, walkthrough | **Human only** | — | High | Not an AI task under any model. An AI may set this to `awaiting_human` and never to `done`. See `phase_gates.human_gates`. | Pending |
 | **B-23** | T-132 | Go-live: domain, DNS, seed, rotate, handover | **Opus** | High | Very High | Irreversible and public. Credential rotation and DNS cutover get one attempt in front of a real audience. | Pending |
 
@@ -349,4 +349,17 @@ were permission logic; B-2's are not.
 
 Both should be resolved before B-2 is started rather than discovered inside it.
 
-i think we finished doing
+**B-21 was attempted 2026-08-21 and is blocked — not for a model-choice
+reason.** The Sonnet call in the row above was about *how* to enter data
+against a signed-off checklist; it never reached that question. T-130 is
+loading the 24 real items in `ARCHITECTURE.md` §A-3.1 — logo, principal's
+message, verified stats, consented teacher/committee/gallery entries, fees,
+admission details, and the rest — and none of that content exists in this
+environment. T-130's own Contract rules out working around the gap: *"An AI
+may assist with data entry it is given, and may originate nothing."* Offered
+the choice between fabricating placeholder-labelled content to force a green
+batch, supplying real content on the spot, or blocking, the user chose to
+block, matching `global_rules`. `build-state.json` records T-130 as `blocked`
+with `blocked_on: ["T-130"]`; nothing in M10 may be selected until real A-3.1
+content — even partial — lets a future session resume it. See
+`SESSION-LOG.md`'s "B-21 (T-130)" entry and `PENDING-COMMIT.md`.
